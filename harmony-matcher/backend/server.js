@@ -468,6 +468,31 @@ app.get('/api/events/:eventId/conversations', async (req, res) => {
   }
 });
 
+app.post('/api/events/:eventId/conversations', async (req, res) => {
+  try {
+    const { eventId } = req.params;
+    const { participant1Id, participant2Id } = req.body;
+    const token = req.headers.authorization?.replace('Bearer ', '');
+
+    if (!token) {
+      return res.status(401).json({ error: 'غير مصرح' });
+    }
+
+    const decoded = verifyToken(token);
+
+    // Ensure the requesting user is one of the participants
+    if (decoded.attendeeId !== participant1Id && decoded.attendeeId !== participant2Id) {
+      return res.status(403).json({ error: 'غير مصرح بإنشاء هذه المحادثة' });
+    }
+
+    const conversation = await createOrGetConversation(eventId, participant1Id, participant2Id);
+    res.json({ success: true, conversation });
+  } catch (error) {
+    console.error('Create conversation error:', error);
+    res.status(500).json({ error: 'فشل في إنشاء المحادثة' });
+  }
+});
+
 app.get('/api/conversations/:conversationId/messages', async (req, res) => {
   try {
     const { conversationId } = req.params;

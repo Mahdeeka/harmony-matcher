@@ -13,26 +13,36 @@ const MessageModal = ({ isOpen, onClose, attendee, currentUser, eventId }) => {
     conversations,
     loadMessages,
     activeConversation,
-    setActiveConversation
+    setActiveConversation,
+    createConversation
   } = useMessaging();
   const [newMessage, setNewMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [currentConversation, setCurrentConversation] = useState(null);
+  const [isCreatingConversation, setIsCreatingConversation] = useState(false);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
 
-  // Find existing conversation or create new one
-  const conversation = conversations.find(conv =>
+  // Find existing conversation
+  const existingConversation = conversations.find(conv =>
     (conv.participant1_id === currentUser?.id && conv.participant2_id === attendee?.id) ||
     (conv.participant1_id === attendee?.id && conv.participant2_id === currentUser?.id)
   );
-  const conversationId = conversation?.id;
 
   useEffect(() => {
-    if (isOpen && conversationId) {
-      setActiveConversation(conversation);
-      joinConversation(conversationId);
-      loadMessages(conversationId);
+    if (isOpen && existingConversation) {
+      setCurrentConversation(existingConversation);
+      setActiveConversation(existingConversation);
+      joinConversation(existingConversation.id);
+      loadMessages(existingConversation.id);
 
+      // Focus input when modal opens
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 100);
+    } else if (isOpen && !existingConversation) {
+      // No conversation exists yet, reset current conversation
+      setCurrentConversation(null);
       // Focus input when modal opens
       setTimeout(() => {
         inputRef.current?.focus();
@@ -42,7 +52,7 @@ const MessageModal = ({ isOpen, onClose, attendee, currentUser, eventId }) => {
     return () => {
       setActiveConversation(null);
     };
-  }, [isOpen, conversationId, joinConversation, loadMessages, setActiveConversation, conversation]);
+  }, [isOpen, existingConversation, joinConversation, loadMessages, setActiveConversation]);
 
   useEffect(() => {
     // Scroll to bottom when new messages arrive
@@ -62,7 +72,30 @@ const MessageModal = ({ isOpen, onClose, attendee, currentUser, eventId }) => {
     }
 
     try {
-      await sendMessage(conversationId, newMessage.trim());
+      let conversationToUse = currentConversation;
+
+      // If no conversation exists, create one first
+      if (!conversationToUse && currentUser?.id && attendee?.id && eventId) {
+        setIsCreatingConversation(true);
+        conversationToUse = await createConversation(eventId, currentUser.id, attendee.id);
+        setIsCreatingConversation(false);
+
+        if (!conversationToUse) {
+          showError('فشل في إنشاء المحادثة');
+          return;
+        }
+
+        setCurrentConversation(conversationToUse);
+        setActiveConversation(conversationToUse);
+        joinConversation(conversationToUse.id);
+      }
+
+      if (!conversationToUse?.id) {
+        showError('خطأ في المحادثة');
+        return;
+      }
+
+      await sendMessage(conversationToUse.id, newMessage.trim());
       setNewMessage('');
       showSuccess('تم إرسال الرسالة');
     } catch (error) {
@@ -82,8 +115,9 @@ const MessageModal = ({ isOpen, onClose, attendee, currentUser, eventId }) => {
     }, 3000);
   };
 
-  const conversationMessages = messages || [];
+  const conversationMessages = currentConversation ? (messages || []) : [];
   const isAttendeeOnline = isConnected; // For now, assume online if connected
+  const isSending = isCreatingConversation;
 
   if (!isOpen) return null;
 
@@ -218,10 +252,14 @@ const MessageModal = ({ isOpen, onClose, attendee, currentUser, eventId }) => {
             />
             <button
               type="submit"
-              disabled={!newMessage.trim() || !isConnected}
+              disabled={!newMessage.trim() || !isConnected || isSending}
               className="btn-primary p-3 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Send className="w-5 h-5" />
+              {isSending ? (
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+              ) : (
+                <Send className="w-5 h-5" />
+              )}
             </button>
           </form>
 

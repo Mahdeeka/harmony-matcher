@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Trophy, Target, TrendingUp, Award } from 'lucide-react';
 import AchievementBadge from './AchievementBadge';
 
-const GamificationDashboard = ({ attendee, matches, onClose }) => {
+const GamificationDashboard = ({ attendee, matches, onClose, isOpen }) => {
   const [achievements, setAchievements] = useState([]);
   const [stats, setStats] = useState({
     totalMatches: 0,
@@ -12,6 +12,7 @@ const GamificationDashboard = ({ attendee, matches, onClose }) => {
   });
 
   useEffect(() => {
+    if (!isOpen) return;
     // Calculate achievements based on user activity
     const calculateAchievements = () => {
       const userAchievements = [
@@ -84,6 +85,8 @@ const GamificationDashboard = ({ attendee, matches, onClose }) => {
 
   const earnedCount = achievements.filter(a => a.earned).length;
   const totalAchievements = achievements.length;
+
+  if (!isOpen) return null;
 
   return (
     <div className="modal-backdrop" onClick={onClose}>

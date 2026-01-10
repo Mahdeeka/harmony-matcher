@@ -23,7 +23,8 @@ function AttendeeMatches() {
     sendMessage,
     loadConversations,
     createConversation,
-    isConnected
+    isConnected,
+    initializeForEvent
   } = useMessaging();
 
   const [attendee, setAttendee] = useState(null);
@@ -74,9 +75,12 @@ function AttendeeMatches() {
       setAttendee(JSON.parse(storedAttendee));
     }
 
+    // Initialize messaging for this event
+    initializeForEvent(eventId);
+
     fetchEvent();
     fetchMatches();
-  }, [eventId]);
+  }, [eventId, initializeForEvent]);
 
   // Filter and search matches
   useEffect(() => {

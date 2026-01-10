@@ -20,12 +20,21 @@ export const MessagingProvider = ({ children }) => {
   const [messages, setMessages] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [typingUsers, setTypingUsers] = useState(new Set());
+  const [currentEventId, setCurrentEventId] = useState(null);
   const { showError } = useToast();
 
-  // Initialize socket connection
+  // Helper to get token for current event
+  const getToken = useCallback(() => {
+    if (currentEventId) {
+      return localStorage.getItem(`harmony_token_${currentEventId}`);
+    }
+    return localStorage.getItem('harmony_token_current');
+  }, [currentEventId]);
+
+  // Initialize socket connection when eventId is set
   useEffect(() => {
-    const token = localStorage.getItem('harmony_token_current');
-    if (!token) return;
+    const token = getToken();
+    if (!token || !currentEventId) return;
 
     const socketUrl = import.meta.env.PROD ? '/' : 'http://localhost:3001';
     const newSocket = io(socketUrl, {
@@ -86,46 +95,57 @@ export const MessagingProvider = ({ children }) => {
     return () => {
       newSocket.close();
     };
-  }, [activeConversation]);
+  }, [currentEventId, getToken]);
+
+  // Initialize messaging for a specific event
+  const initializeForEvent = useCallback((eventId) => {
+    setCurrentEventId(eventId);
+  }, []);
 
   const authenticate = useCallback((token, eventId) => {
     if (socket) {
       socket.emit('authenticate', { token });
-      localStorage.setItem('harmony_token_current', token);
+    }
+    if (eventId) {
+      setCurrentEventId(eventId);
     }
   }, [socket]);
 
   const loadConversations = useCallback(async (eventId) => {
     try {
-      const token = localStorage.getItem('harmony_token_current');
+      const token = getToken();
+      if (!token) return;
+
       const response = await fetch(`/api/events/${eventId}/conversations`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await response.json();
-      setConversations(data.conversations);
+      setConversations(data.conversations || []);
 
       // Calculate total unread count
-      const totalUnread = data.conversations.reduce((sum, conv) => sum + (conv.unread_count || 0), 0);
+      const totalUnread = (data.conversations || []).reduce((sum, conv) => sum + (conv.unread_count || 0), 0);
       setUnreadCount(totalUnread);
     } catch (error) {
       console.error('Load conversations error:', error);
       showError('فشل في تحميل المحادثات');
     }
-  }, [showError]);
+  }, [showError, getToken]);
 
   const loadMessages = useCallback(async (conversationId) => {
     try {
-      const token = localStorage.getItem('harmony_token_current');
+      const token = getToken();
+      if (!token) return;
+
       const response = await fetch(`/api/conversations/${conversationId}/messages`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await response.json();
-      setMessages(data.messages);
+      setMessages(data.messages || []);
     } catch (error) {
       console.error('Load messages error:', error);
       showError('فشل في تحميل الرسائل');
     }
-  }, [showError]);
+  }, [showError, getToken]);
 
   const sendMessage = useCallback(async (conversationId, content, messageType = 'text') => {
     if (!socket || !content.trim()) return;
@@ -168,7 +188,9 @@ export const MessagingProvider = ({ children }) => {
 
   const markAsRead = useCallback(async (conversationId) => {
     try {
-      const token = localStorage.getItem('harmony_token_current');
+      const token = getToken();
+      if (!token) return;
+
       await fetch(`/api/conversations/${conversationId}/read`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` }
@@ -183,13 +205,39 @@ export const MessagingProvider = ({ children }) => {
     } catch (error) {
       console.error('Mark as read error:', error);
     }
-  }, [activeConversation]);
+  }, [activeConversation, getToken]);
 
   const createConversation = useCallback(async (eventId, participant1Id, participant2Id) => {
-    // This will be handled by the sendMessage function when no conversation exists
-    // The backend will create the conversation automatically
-    console.log('Creating conversation between', participant1Id, 'and', participant2Id);
-  }, []);
+    try {
+      const token = getToken();
+      if (!token) return null;
+
+      const response = await fetch(`/api/events/${eventId}/conversations`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ participant1Id, participant2Id })
+      });
+      const data = await response.json();
+
+      if (data.conversation) {
+        // Add to conversations list if not already there
+        setConversations(prev => {
+          const exists = prev.some(c => c.id === data.conversation.id);
+          if (exists) return prev;
+          return [...prev, data.conversation];
+        });
+        return data.conversation;
+      }
+      return null;
+    } catch (error) {
+      console.error('Create conversation error:', error);
+      showError('فشل في إنشاء المحادثة');
+      return null;
+    }
+  }, [getToken, showError]);
 
   return (
     <MessagingContext.Provider value={{
@@ -203,9 +251,11 @@ export const MessagingProvider = ({ children }) => {
       messages,
       unreadCount,
       typingUsers,
+      currentEventId,
 
       // Actions
       authenticate,
+      initializeForEvent,
       loadConversations,
       loadMessages,
       sendMessage,
