@@ -1,14 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { 
-  ArrowRight, Upload, Users, Sparkles, CheckCircle, Clock,
+import {
+  ArrowRight, Users, Sparkles, CheckCircle, Clock,
   Plus, Trash2, Edit2, Download, Send, ExternalLink, RefreshCw,
-  FileSpreadsheet, Globe
+  FileSpreadsheet, Globe, Eye, BarChart3
 } from 'lucide-react';
 import axios from 'axios';
+import { useToast } from '../contexts/ToastContext';
+import FileUpload from '../components/FileUpload';
+import SkeletonLoader from '../components/SkeletonLoader';
 
 function EventManager() {
   const { eventId } = useParams();
+  const { showSuccess, showError, showInfo } = useToast();
   const [event, setEvent] = useState(null);
   const [attendees, setAttendees] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -22,7 +26,6 @@ function EventManager() {
     name: '', phone: '', email: '', title: '', company: '',
     professional_bio: '', skills: '', looking_for: '', offering: ''
   });
-  const fileInputRef = useRef(null);
 
   useEffect(() => {
     fetchEvent();
@@ -67,25 +70,20 @@ function EventManager() {
     }
   };
 
-  const handleFileUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    const formData = new FormData();
-    formData.append('file', file);
+  const handleFileUpload = async (file, formData) => {
+    if (!file || !formData) return;
 
     setUploading(true);
     try {
       const response = await axios.post(`/api/events/${eventId}/upload`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
-      alert(response.data.message);
+      showSuccess(response.data.message);
       fetchAttendees();
     } catch (error) {
-      alert(error.response?.data?.error || 'فشل في رفع الملف');
+      showError(error.response?.data?.error || 'فشل في رفع الملف');
     } finally {
       setUploading(false);
-      e.target.value = '';
     }
   };
 
@@ -93,8 +91,9 @@ function EventManager() {
     try {
       await axios.post(`/api/events/${eventId}/generate-matches`);
       setMatchingStatus({ ...matchingStatus, status: 'processing' });
+      showInfo('بدأت عملية المطابقة بالذكاء الاصطناعي');
     } catch (error) {
-      alert('فشل في بدء المطابقة');
+      showError('فشل في بدء المطابقة');
     }
   };
 
@@ -108,8 +107,9 @@ function EventManager() {
         professional_bio: '', skills: '', looking_for: '', offering: ''
       });
       fetchAttendees();
+      showSuccess('تم إضافة المشارك بنجاح');
     } catch (error) {
-      alert(error.response?.data?.error || 'فشل في إضافة المشارك');
+      showError(error.response?.data?.error || 'فشل في إضافة المشارك');
     }
   };
 
@@ -118,8 +118,9 @@ function EventManager() {
     try {
       await axios.delete(`/api/attendees/${attendeeId}`);
       fetchAttendees();
+      showSuccess('تم حذف المشارك بنجاح');
     } catch (error) {
-      alert('فشل في حذف المشارك');
+      showError('فشل في حذف المشارك');
     }
   };
 
@@ -129,7 +130,7 @@ function EventManager() {
       setHarmonyMembers(response.data.members);
       setShowHarmonyModal(true);
     } catch (error) {
-      alert('فشل في جلب أعضاء Harmony');
+      showError('فشل في جلب أعضاء Harmony');
     }
   };
 
@@ -138,11 +139,11 @@ function EventManager() {
       const response = await axios.post(`/api/events/${eventId}/import-harmony`, {
         selectedIds: selectedHarmonyMembers
       });
-      alert(response.data.message);
+      showSuccess(response.data.message);
       setShowHarmonyModal(false);
       fetchAttendees();
     } catch (error) {
-      alert('فشل في الاستيراد');
+      showError('فشل في الاستيراد');
     }
   };
 
@@ -177,10 +178,19 @@ function EventManager() {
                 <p className="text-gray-500 text-sm">إدارة الفعالية</p>
               </div>
             </div>
-            <button onClick={copyEventLink} className="btn-secondary">
-              <ExternalLink className="w-4 h-4" />
-              نسخ رابط المشاركين
-            </button>
+            <div className="flex items-center gap-3">
+              <Link
+                to={`/admin/event/${eventId}/analytics`}
+                className="btn-secondary flex items-center gap-2"
+              >
+                <BarChart3 className="w-4 h-4" />
+                التحليلات
+              </Link>
+              <button onClick={copyEventLink} className="btn-secondary flex items-center gap-2">
+                <ExternalLink className="w-4 h-4" />
+                رابط المشاركين
+              </button>
+            </div>
           </div>
         </div>
       </header>
@@ -245,98 +255,164 @@ function EventManager() {
         </div>
 
         {/* Actions */}
-        <div className="flex flex-wrap gap-3 mb-6">
-          <button 
-            onClick={() => fileInputRef.current?.click()}
-            className="btn-primary"
-            disabled={uploading}
-          >
-            {uploading ? (
-              <div className="spinner"></div>
-            ) : (
-              <FileSpreadsheet className="w-5 h-5" />
-            )}
-            رفع ملف Excel
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".xlsx,.xls,.csv"
-            onChange={handleFileUpload}
-            className="hidden"
-          />
-          
-          <button onClick={fetchHarmonyMembers} className="btn-secondary">
-            <Globe className="w-5 h-5" />
-            استيراد من Harmony
-          </button>
-          
-          <button onClick={() => setShowAddModal(true)} className="btn-secondary">
-            <Plus className="w-5 h-5" />
-            إضافة مشارك
-          </button>
+        <div className="space-y-6 mb-6">
+          {/* File Upload */}
+          <div className="card p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <FileSpreadsheet className="w-6 h-6 text-harmony-600" />
+              <h3 className="text-lg font-semibold text-gray-900">استيراد المشاركين</h3>
+            </div>
+
+            <FileUpload
+              onFileUpload={handleFileUpload}
+              accept=".xlsx,.xls,.csv"
+            />
+
+            <div className="flex flex-wrap gap-3 mt-4 pt-4 border-t border-gray-100">
+              <button onClick={fetchHarmonyMembers} className="btn-secondary">
+                <Globe className="w-5 h-5" />
+                استيراد من Harmony
+              </button>
+
+              <button onClick={() => setShowAddModal(true)} className="btn-secondary">
+                <Plus className="w-5 h-5" />
+                إضافة مشارك يدوياً
+              </button>
+            </div>
+          </div>
+
+          {/* Quick Actions */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="card p-4 text-center hover:shadow-md transition-shadow cursor-pointer"
+                 onClick={() => fileInputRef.current?.click()}>
+              <FileSpreadsheet className="w-8 h-8 text-blue-600 mx-auto mb-2" />
+              <div className="font-medium text-gray-900">رفع ملف Excel</div>
+              <div className="text-sm text-gray-500">استيراد بيانات متعددة</div>
+            </div>
+
+            <div className="card p-4 text-center hover:shadow-md transition-shadow cursor-pointer"
+                 onClick={fetchHarmonyMembers}>
+              <Globe className="w-8 h-8 text-green-600 mx-auto mb-2" />
+              <div className="font-medium text-gray-900">من Harmony</div>
+              <div className="text-sm text-gray-500">639+ عضو جاهز</div>
+            </div>
+
+            <div className="card p-4 text-center hover:shadow-md transition-shadow cursor-pointer"
+                 onClick={() => setShowAddModal(true)}>
+              <Plus className="w-8 h-8 text-purple-600 mx-auto mb-2" />
+              <div className="font-medium text-gray-900">إضافة يدوية</div>
+              <div className="text-sm text-gray-500">مشارك واحد</div>
+            </div>
+          </div>
         </div>
 
         {/* Attendees Table */}
         <div className="card overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="text-right px-4 py-3 text-sm font-medium text-gray-500">الاسم</th>
-                  <th className="text-right px-4 py-3 text-sm font-medium text-gray-500">الهاتف</th>
-                  <th className="text-right px-4 py-3 text-sm font-medium text-gray-500">المسمى الوظيفي</th>
-                  <th className="text-right px-4 py-3 text-sm font-medium text-gray-500">الشركة</th>
-                  <th className="text-right px-4 py-3 text-sm font-medium text-gray-500">إجراءات</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {attendees.map((attendee) => (
-                  <tr key={attendee.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-3">
-                        {attendee.photo_url ? (
-                          <img 
-                            src={attendee.photo_url} 
-                            alt={attendee.name}
-                            className="w-10 h-10 rounded-full object-cover"
-                          />
-                        ) : (
-                          <div className="w-10 h-10 bg-harmony-100 rounded-full flex items-center justify-center">
-                            <span className="text-harmony-600 font-bold">
-                              {attendee.name?.charAt(0)}
-                            </span>
-                          </div>
-                        )}
-                        <span className="font-medium text-gray-900">{attendee.name}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-gray-500 font-mono text-sm" dir="ltr">
-                      {attendee.phone}
-                    </td>
-                    <td className="px-4 py-3 text-gray-500">
-                      {attendee.title || '-'}
-                    </td>
-                    <td className="px-4 py-3 text-gray-500">
-                      {attendee.company || '-'}
-                    </td>
-                    <td className="px-4 py-3">
-                      <button
-                        onClick={() => deleteAttendee(attendee.id)}
-                        className="text-gray-400 hover:text-red-600 transition-colors"
-                      >
-                        <Trash2 className="w-5 h-5" />
-                      </button>
-                    </td>
-                  </tr>
+            {loading ? (
+              // Skeleton loading for attendees table
+              <div className="divide-y divide-gray-100">
+                {Array.from({ length: 5 }).map((_, index) => (
+                  <SkeletonLoader key={index} variant="attendee-row" />
                 ))}
-              </tbody>
-            </table>
-            
-            {attendees.length === 0 && (
-              <div className="text-center py-12">
-                <Users className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                <p className="text-gray-500">لا يوجد مشاركين. قم برفع ملف Excel أو أضف مشاركين يدوياً.</p>
+              </div>
+            ) : (
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="text-right px-4 py-3 text-sm font-medium text-gray-500">الاسم</th>
+                    <th className="text-right px-4 py-3 text-sm font-medium text-gray-500">الهاتف</th>
+                    <th className="text-right px-4 py-3 text-sm font-medium text-gray-500">المسمى الوظيفي</th>
+                    <th className="text-right px-4 py-3 text-sm font-medium text-gray-500">الشركة</th>
+                    <th className="text-right px-4 py-3 text-sm font-medium text-gray-500">إجراءات</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {attendees.map((attendee) => (
+                    <tr key={attendee.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-3">
+                          {attendee.photo_url ? (
+                            <img
+                              src={attendee.photo_url}
+                              alt={attendee.name}
+                              className="w-10 h-10 rounded-full object-cover shadow-sm"
+                            />
+                          ) : (
+                            <div className="w-10 h-10 bg-harmony-100 rounded-full flex items-center justify-center shadow-sm">
+                              <span className="text-harmony-600 font-bold">
+                                {attendee.name?.charAt(0)}
+                              </span>
+                            </div>
+                          )}
+                          <div>
+                            <span className="font-medium text-gray-900">{attendee.name}</span>
+                            {attendee.email && (
+                              <div className="text-xs text-gray-500 truncate max-w-32" dir="ltr">
+                                {attendee.email}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-gray-500 font-mono text-sm" dir="ltr">
+                        {attendee.phone}
+                      </td>
+                      <td className="px-4 py-3 text-gray-500">
+                        <div>
+                          {attendee.title || '-'}
+                          {attendee.industry && (
+                            <div className="text-xs text-gray-400">{attendee.industry}</div>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-gray-500">
+                        {attendee.company || '-'}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <Link
+                            to={`/admin/event/${eventId}/attendee/${attendee.id}`}
+                            className="p-2 text-gray-400 hover:text-harmony-600 hover:bg-harmony-50 rounded-lg transition-all"
+                            title="عرض التطابقات"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </Link>
+                          <button
+                            onClick={() => deleteAttendee(attendee.id)}
+                            className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                            title="حذف"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+
+            {!loading && attendees.length === 0 && (
+              <div className="text-center py-16">
+                <Users className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-700 mb-2">لا يوجد مشاركين</h3>
+                <p className="text-gray-500 mb-6 max-w-md mx-auto">
+                  ابدأ بإضافة المشاركين للفعالية. يمكنك رفع ملف Excel أو استيراد من Harmony أو إضافة المشاركين يدوياً.
+                </p>
+                <div className="flex flex-wrap justify-center gap-3">
+                  <button
+                    onClick={() => document.querySelector('[data-upload-trigger]')?.click()}
+                    className="btn-primary"
+                  >
+                    <FileSpreadsheet className="w-5 h-5" />
+                    رفع ملف Excel
+                  </button>
+                  <button onClick={fetchHarmonyMembers} className="btn-secondary">
+                    <Globe className="w-5 h-5" />
+                    من Harmony
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -487,7 +563,7 @@ function EventManager() {
               استيراد من Harmony ({harmonyMembers.length} عضو)
             </h3>
             <p className="text-gray-500 text-sm mb-4">
-              ⚠️ ملاحظة: الـ API يوفر الأسماء والصور فقط. ستحتاج لإضافة أرقام الهواتف والتفاصيل الأخرى يدوياً.
+              ✅ الـ API يوفر جميع بيانات الأعضاء الكاملة: الأسماء، الصور، أرقام الهواتف، البريد الإلكتروني، المسميات الوظيفية، الخبرات، المهارات، وروابط التواصل الاجتماعي.
             </p>
             <div className="flex-1 overflow-y-auto border rounded-xl p-2 mb-4">
               <div className="grid grid-cols-2 md:grid-cols-3 gap-2">

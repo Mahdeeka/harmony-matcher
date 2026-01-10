@@ -7,6 +7,27 @@ html {
   direction: rtl;
 }
 
+/* Mobile optimizations */
+@media (max-width: 640px) {
+  html {
+    font-size: 14px;
+  }
+}
+
+/* Safe area for mobile devices */
+.safe-area-top {
+  padding-top: env(safe-area-inset-top);
+}
+
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Dark mode support */
+.dark {
+  color-scheme: dark;
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
@@ -27,7 +48,26 @@ html {
   background: #a1a1a1;
 }
 
-/* Loading spinner */
+/* Dark mode scrollbars */
+.dark ::-webkit-scrollbar-track {
+  background: #374151;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #6b7280;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+/* Touch targets - minimum 44px for accessibility */
+.btn-touch {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* Loading spinners */
 .spinner {
   border: 3px solid #f3f3f3;
   border-top: 3px solid #0ea5e9;
@@ -37,19 +77,58 @@ html {
   animation: spin 1s linear infinite;
 }
 
+.dark .spinner {
+  border-color: #374151;
+  border-top-color: #0ea5e9;
+}
+
+.spinner-sm {
+  width: 16px;
+  height: 16px;
+  border-width: 2px;
+}
+
+.spinner-lg {
+  width: 32px;
+  height: 32px;
+  border-width: 4px;
+}
+
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
 }
 
+/* Skeleton loading */
+.skeleton {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: loading 1.5s infinite;
+}
+
+.dark .skeleton {
+  background: linear-gradient(90deg, #374151 25%, #4b5563 50%, #374151 75%);
+  background-size: 200% 100%;
+}
+
+@keyframes loading {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
 /* Match card animation */
 .match-card {
-  transition: all 0.3s ease;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .match-card:hover {
   transform: translateY(-4px);
   box-shadow: 0 12px 24px rgba(0, 0, 0, 0.1);
+}
+
+.match-card:active {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
 }
 
 /* Progress bar animation */
@@ -63,14 +142,32 @@ html {
   100% { width: 100%; }
 }
 
-/* Fade in animation */
+/* Fade in animations */
 .fade-in {
-  animation: fadeIn 0.5s ease-in;
+  animation: fadeIn 0.5s ease-out;
+}
+
+.fade-in-up {
+  animation: fade-in-up 0.6s ease-out;
+}
+
+.fade-in-delayed {
+  animation: fadeIn 0.5s ease-out 0.2s both;
 }
 
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+/* Pulse animation for attention */
+.pulse-attention {
+  animation: pulse-attention 2s infinite;
+}
+
+@keyframes pulse-attention {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
 }
 
 /* OTP input styling */
@@ -82,26 +179,63 @@ html {
   font-weight: bold;
   border: 2px solid #e5e7eb;
   border-radius: 12px;
-  transition: all 0.2s;
+  transition: all 0.2s ease;
 }
 
 .otp-input:focus {
   border-color: #0ea5e9;
   outline: none;
   box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.2);
+  transform: scale(1.05);
+}
+
+.otp-input.error {
+  border-color: #ef4444;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2);
+}
+
+/* Mobile-optimized OTP layout */
+@media (max-width: 640px) {
+  .otp-input {
+    width: 45px;
+    height: 50px;
+    font-size: 20px;
+  }
 }
 
 /* Button styles */
 .btn-primary {
-  @apply bg-harmony-600 hover:bg-harmony-700 text-white font-medium py-3 px-6 rounded-xl transition-all duration-200 flex items-center justify-center gap-2;
+  @apply bg-harmony-600 hover:bg-harmony-700 active:bg-harmony-800 text-white font-medium py-3 px-6 rounded-xl transition-all duration-200 flex items-center justify-center gap-2 btn-touch;
 }
 
 .btn-secondary {
-  @apply bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-3 px-6 rounded-xl transition-all duration-200 flex items-center justify-center gap-2;
+  @apply bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-gray-700 font-medium py-3 px-6 rounded-xl transition-all duration-200 flex items-center justify-center gap-2 btn-touch;
+}
+
+.dark .btn-secondary {
+  @apply bg-gray-700 hover:bg-gray-600 active:bg-gray-500 text-gray-200;
 }
 
 .btn-success {
-  @apply bg-green-500 hover:bg-green-600 text-white font-medium py-3 px-6 rounded-xl transition-all duration-200 flex items-center justify-center gap-2;
+  @apply bg-green-500 hover:bg-green-600 active:bg-green-700 text-white font-medium py-3 px-6 rounded-xl transition-all duration-200 flex items-center justify-center gap-2 btn-touch;
+}
+
+.btn-ghost {
+  @apply bg-transparent hover:bg-gray-100 active:bg-gray-200 text-gray-700 font-medium py-3 px-6 rounded-xl transition-all duration-200 flex items-center justify-center gap-2 btn-touch;
+}
+
+.dark .btn-ghost {
+  @apply hover:bg-gray-700 active:bg-gray-600 text-gray-200;
+}
+
+/* Mobile button adjustments */
+@media (max-width: 640px) {
+  .btn-primary,
+  .btn-secondary,
+  .btn-success,
+  .btn-ghost {
+    @apply py-4 px-8 text-base;
+  }
 }
 
 /* Card styles */
@@ -109,9 +243,31 @@ html {
   @apply bg-white rounded-2xl shadow-sm border border-gray-100 p-6;
 }
 
+.dark .card {
+  @apply bg-gray-800 border-gray-700;
+}
+
+/* Mobile card adjustments */
+@media (max-width: 640px) {
+  .card {
+    @apply rounded-xl p-4;
+  }
+}
+
 /* Input styles */
 .input {
   @apply w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-harmony-500 focus:border-transparent outline-none transition-all;
+}
+
+.dark .input {
+  @apply bg-gray-700 border-gray-600 text-white placeholder-gray-400;
+}
+
+/* Mobile input adjustments */
+@media (max-width: 640px) {
+  .input {
+    @apply px-3 py-4 text-base;
+  }
 }
 
 /* Badge styles */
@@ -123,10 +279,109 @@ html {
   @apply bg-harmony-100 text-harmony-700;
 }
 
+.dark .badge-primary {
+  @apply bg-harmony-900 text-harmony-300;
+}
+
 .badge-success {
   @apply bg-green-100 text-green-700;
 }
 
+.dark .badge-success {
+  @apply bg-green-900 text-green-300;
+}
+
 .badge-warning {
   @apply bg-yellow-100 text-yellow-700;
+}
+
+.dark .badge-warning {
+  @apply bg-yellow-900 text-yellow-300;
+}
+
+.badge-error {
+  @apply bg-red-100 text-red-700;
+}
+
+.dark .badge-error {
+  @apply bg-red-900 text-red-300;
+}
+
+/* Toast notifications */
+.toast {
+  @apply fixed top-4 right-4 z-50 max-w-sm w-full bg-white rounded-xl shadow-lg border border-gray-200 p-4;
+  animation: slide-in-right 0.3s ease-out;
+}
+
+.dark .toast {
+  @apply bg-gray-800 border-gray-700 text-white;
+}
+
+.toast-success {
+  @apply border-green-200 bg-green-50;
+}
+
+.dark .toast-success {
+  @apply border-green-700 bg-green-900;
+}
+
+.toast-error {
+  @apply border-red-200 bg-red-50;
+}
+
+.dark .toast-error {
+  @apply border-red-700 bg-red-900;
+}
+
+.toast-info {
+  @apply border-blue-200 bg-blue-50;
+}
+
+.dark .toast-info {
+  @apply border-blue-700 bg-blue-900;
+}
+
+/* Mobile toast positioning */
+@media (max-width: 640px) {
+  .toast {
+    @apply right-4 left-4 max-w-none;
+  }
+}
+
+/* Modal improvements */
+.modal-backdrop {
+  @apply fixed inset-0 bg-black/50 backdrop-blur-sm z-40;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.modal-content {
+  @apply bg-white rounded-3xl shadow-xl max-w-md w-full mx-4;
+  animation: scale-in 0.2s ease-out;
+}
+
+/* Mobile modal adjustments */
+@media (max-width: 640px) {
+  .modal-content {
+    @apply mx-4 rounded-2xl;
+  }
+}
+
+/* Improved focus states for accessibility */
+.focus-visible {
+  @apply focus:outline-none focus:ring-2 focus:ring-harmony-500 focus:ring-offset-2;
+}
+
+/* Reduce motion for users who prefer it */
+@media (prefers-reduced-motion: reduce) {
+  .match-card,
+  .btn-primary,
+  .btn-secondary,
+  .btn-success,
+  .fade-in,
+  .fade-in-up,
+  .modal-backdrop,
+  .modal-content {
+    animation: none !important;
+    transition: none !important;
+  }
 }

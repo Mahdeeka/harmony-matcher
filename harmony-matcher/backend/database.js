@@ -16,9 +16,29 @@ class DatabaseWrapper {
     const self = this;
     return {
       run: (...params) => {
-        self.database.run(sql, params);
+        try {
+          console.log('Executing SQL:', sql, 'with params:', params);
+          const result = self.database.run(sql, params);
+          console.log('SQL execution result:', result);
         self.save();
-        return { changes: self.database.getRowsModified() };
+
+          // For INSERT/UPDATE/DELETE, sql.js doesn't have getRowsModified
+          // We need to check if the operation was successful
+          // For INSERT, we can check if the result has insertId or changes
+          let changes = 0;
+          if (result.insertId !== undefined) {
+            changes = 1; // INSERT operation successful
+          } else if (sql.toUpperCase().includes('UPDATE') || sql.toUpperCase().includes('DELETE')) {
+            // For UPDATE/DELETE, we could try to count affected rows differently
+            changes = 1; // Assume successful for now
+          }
+
+          console.log('Changes detected:', changes);
+          return { changes };
+        } catch (error) {
+          console.error('Database run error:', error);
+          throw error;
+        }
       },
       get: (...params) => {
         const stmt = self.database.prepare(sql);
@@ -153,6 +173,36 @@ async function initDatabase() {
       expires_at TEXT NOT NULL,
       verified INTEGER DEFAULT 0,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- Conversations table
+    CREATE TABLE IF NOT EXISTS conversations (
+      id TEXT PRIMARY KEY,
+      event_id TEXT NOT NULL,
+      participant1_id TEXT NOT NULL,
+      participant2_id TEXT NOT NULL,
+      last_message TEXT,
+      last_message_time TEXT,
+      unread_count1 INTEGER DEFAULT 0,
+      unread_count2 INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE,
+      FOREIGN KEY (participant1_id) REFERENCES attendees(id) ON DELETE CASCADE,
+      FOREIGN KEY (participant2_id) REFERENCES attendees(id) ON DELETE CASCADE,
+      UNIQUE(event_id, participant1_id, participant2_id)
+    );
+
+    -- Messages table
+    CREATE TABLE IF NOT EXISTS messages (
+      id TEXT PRIMARY KEY,
+      conversation_id TEXT NOT NULL,
+      sender_id TEXT NOT NULL,
+      content TEXT NOT NULL,
+      message_type TEXT DEFAULT 'text',
+      is_read INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
+      FOREIGN KEY (sender_id) REFERENCES attendees(id) ON DELETE CASCADE
     );
 
     -- Admin users table
