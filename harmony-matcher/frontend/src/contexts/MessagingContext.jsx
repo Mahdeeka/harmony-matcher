@@ -27,7 +27,8 @@ export const MessagingProvider = ({ children }) => {
     const token = localStorage.getItem('harmony_token_current');
     if (!token) return;
 
-    const newSocket = io('http://localhost:3001', {
+    const socketUrl = import.meta.env.PROD ? '/' : 'http://localhost:3001';
+    const newSocket = io(socketUrl, {
       auth: { token }
     });
 

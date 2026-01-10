@@ -1,5 +1,5 @@
 import React from 'react';
-import { Routes, Route, BrowserRouter } from 'react-router-dom';
+import { Routes, Route } from 'react-router-dom';
 import { LanguageProvider } from './contexts/LanguageContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { ToastProvider } from './contexts/ToastContext';
@@ -26,8 +26,7 @@ function App() {
           <MessagingProvider>
             <SocketProvider>
               <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-300">
-                <BrowserRouter>
-                  <Routes>
+                <Routes>
                     {/* Home / Landing */}
                     <Route path="/" element={<Home />} />
 
@@ -40,8 +39,7 @@ function App() {
                     {/* Attendee Routes */}
                     <Route path="/event/:eventId" element={<AttendeeLogin />} />
                     <Route path="/event/:eventId/matches" element={<AttendeeMatches />} />
-                  </Routes>
-                </BrowserRouter>
+                </Routes>
 
                 {/* Global Components */}
                 <PWAInstallPrompt />

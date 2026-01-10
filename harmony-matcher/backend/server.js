@@ -92,8 +92,8 @@ io.on('connection', (socket) => {
 
       const messageData = {
         ...message,
-        sender_name: sender.name,
-        sender_photo: sender.photo_url
+        sender_name: sender?.name || 'مستخدم',
+        sender_photo: sender?.photo_url || null
       };
 
       // Broadcast to conversation participants
@@ -512,12 +512,13 @@ app.post('/api/conversations/:conversationId/messages', async (req, res) => {
 
     // Notify the other participant if they're online
     if (connectedUsers.has(otherParticipantId)) {
+      const senderInfo = db.prepare(`SELECT name, photo_url FROM attendees WHERE id = ?`).get(decoded.attendeeId);
       io.to(connectedUsers.get(otherParticipantId)).emit('new_message', {
         conversationId,
         message: {
           ...message,
-          sender_name: db.prepare(`SELECT name FROM attendees WHERE id = ?`).get(decoded.attendeeId).name,
-          sender_photo: db.prepare(`SELECT photo_url FROM attendees WHERE id = ?`).get(decoded.attendeeId).photo_url
+          sender_name: senderInfo?.name || 'مستخدم',
+          sender_photo: senderInfo?.photo_url || null
         }
       });
     }

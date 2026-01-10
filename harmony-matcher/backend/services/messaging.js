@@ -46,13 +46,22 @@ async function sendMessage(conversationId, senderId, content, messageType = 'tex
 
   // Update unread count for the other participant
   const conversation = db.prepare(`SELECT * FROM conversations WHERE id = ?`).get(conversationId);
-  const otherParticipant = conversation.participant1_id === senderId ? 'unread_count2' : 'unread_count1';
+  const isParticipant1 = conversation.participant1_id === senderId;
 
-  db.prepare(`
-    UPDATE conversations
-    SET ${otherParticipant} = ${otherParticipant} + 1
-    WHERE id = ?
-  `).run(conversationId);
+  // Use separate queries to avoid SQL injection - column names cannot be parameterized
+  if (isParticipant1) {
+    db.prepare(`
+      UPDATE conversations
+      SET unread_count2 = unread_count2 + 1
+      WHERE id = ?
+    `).run(conversationId);
+  } else {
+    db.prepare(`
+      UPDATE conversations
+      SET unread_count1 = unread_count1 + 1
+      WHERE id = ?
+    `).run(conversationId);
+  }
 
   return db.prepare(`SELECT * FROM messages WHERE id = ?`).get(messageId);
 }
@@ -115,13 +124,22 @@ async function markMessagesAsRead(conversationId, userId) {
 
   // Reset unread count for this user
   const conversation = db.prepare(`SELECT * FROM conversations WHERE id = ?`).get(conversationId);
-  const unreadField = conversation.participant1_id === userId ? 'unread_count1' : 'unread_count2';
+  const isParticipant1 = conversation.participant1_id === userId;
 
-  db.prepare(`
-    UPDATE conversations
-    SET ${unreadField} = 0
-    WHERE id = ?
-  `).run(conversationId);
+  // Use separate queries to avoid SQL injection - column names cannot be parameterized
+  if (isParticipant1) {
+    db.prepare(`
+      UPDATE conversations
+      SET unread_count1 = 0
+      WHERE id = ?
+    `).run(conversationId);
+  } else {
+    db.prepare(`
+      UPDATE conversations
+      SET unread_count2 = 0
+      WHERE id = ?
+    `).run(conversationId);
+  }
 }
 
 async function getUnreadCount(attendeeId, eventId) {

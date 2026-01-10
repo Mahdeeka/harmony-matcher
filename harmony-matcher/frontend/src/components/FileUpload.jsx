@@ -39,12 +39,14 @@ const FileUpload = ({ onFileUpload, accept = ".xlsx,.xls,.csv", multiple = false
     setUploading(true);
     setUploadProgress(0);
 
+    let progressInterval = null;
+
     try {
       // Simulate progress for better UX
-      const progressInterval = setInterval(() => {
+      progressInterval = setInterval(() => {
         setUploadProgress(prev => {
           if (prev >= 90) {
-            clearInterval(progressInterval);
+            if (progressInterval) clearInterval(progressInterval);
             return 90;
           }
           return prev + 10;
@@ -59,7 +61,7 @@ const FileUpload = ({ onFileUpload, accept = ".xlsx,.xls,.csv", multiple = false
       await onFileUpload(file, formData);
 
       setUploadProgress(100);
-      clearInterval(progressInterval);
+      if (progressInterval) clearInterval(progressInterval);
 
       showSuccess(`تم رفع الملف ${file.name} بنجاح`);
 
@@ -69,6 +71,8 @@ const FileUpload = ({ onFileUpload, accept = ".xlsx,.xls,.csv", multiple = false
       }, 2000);
 
     } catch (error) {
+      // Clear the interval on error to prevent memory leak
+      if (progressInterval) clearInterval(progressInterval);
       console.error('Upload error:', error);
       showError(error.response?.data?.error || 'فشل في رفع الملف');
       resetUpload();

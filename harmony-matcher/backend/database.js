@@ -18,20 +18,18 @@ class DatabaseWrapper {
       run: (...params) => {
         try {
           console.log('Executing SQL:', sql, 'with params:', params);
-          const result = self.database.run(sql, params);
-          console.log('SQL execution result:', result);
-        self.save();
-
-          // For INSERT/UPDATE/DELETE, sql.js doesn't have getRowsModified
-          // We need to check if the operation was successful
-          // For INSERT, we can check if the result has insertId or changes
-          let changes = 0;
-          if (result.insertId !== undefined) {
-            changes = 1; // INSERT operation successful
-          } else if (sql.toUpperCase().includes('UPDATE') || sql.toUpperCase().includes('DELETE')) {
-            // For UPDATE/DELETE, we could try to count affected rows differently
-            changes = 1; // Assume successful for now
+          // sql.js doesn't have run(), use prepared statements instead
+          const stmt = self.database.prepare(sql);
+          if (params.length > 0) {
+            stmt.bind(params);
           }
+          stmt.step();
+          stmt.free();
+          self.save();
+
+          // For INSERT/UPDATE/DELETE, assume operation was successful
+          // sql.js doesn't provide affected row count easily
+          const changes = 1;
 
           console.log('Changes detected:', changes);
           return { changes };

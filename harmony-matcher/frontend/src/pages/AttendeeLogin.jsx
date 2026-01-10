@@ -439,12 +439,14 @@ function AttendeeLogin() {
           <div>
             <div className="text-center mb-6">
               <p className="text-gray-600 mb-1">أدخل الرمز المرسل إلى</p>
-              <p className="font-bold text-gray-900 dir-ltr" dir="ltr">{phone}</p>
+              <p className="font-bold text-gray-900 dir-ltr" dir="ltr">
+                {authMethod === 'phone' ? phone : email}
+              </p>
               <button
                 onClick={() => setStep('phone')}
                 className="text-harmony-600 text-sm hover:underline mt-1"
               >
-                تغيير الرقم
+                {authMethod === 'phone' ? 'تغيير الرقم' : 'تغيير البريد الإلكتروني'}
               </button>
             </div>
 

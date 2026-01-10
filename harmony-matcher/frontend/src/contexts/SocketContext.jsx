@@ -21,7 +21,8 @@ export const SocketProvider = ({ children }) => {
   useEffect(() => {
     // Initialize socket connection
     const initSocket = () => {
-      const newSocket = io(process.env.NODE_ENV === 'production' ? '/' : 'http://localhost:3001', {
+      const socketUrl = import.meta.env.PROD ? '/' : 'http://localhost:3001';
+      const newSocket = io(socketUrl, {
         transports: ['websocket', 'polling'],
         timeout: 20000,
         forceNew: true,

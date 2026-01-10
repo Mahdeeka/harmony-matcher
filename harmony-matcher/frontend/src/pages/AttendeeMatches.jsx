@@ -16,7 +16,7 @@ import GamificationDashboard from '../components/GamificationDashboard';
 function AttendeeMatches() {
   const { eventId } = useParams();
   const navigate = useNavigate();
-  const { showSuccess, showInfo } = useToast();
+  const { showSuccess, showInfo, showError } = useToast();
   const {
     conversations,
     unreadCount,
@@ -52,6 +52,10 @@ function AttendeeMatches() {
 
   // Gamification modal state
   const [gamificationModalOpen, setGamificationModalOpen] = useState(false);
+
+  // Direct message state
+  const [messageText, setMessageText] = useState('');
+  const [sendingMessage, setSendingMessage] = useState(false);
 
   // Get unique industries from matches
   const availableIndustries = [...new Set(allMatches.map(m => m.industry).filter(Boolean))];
