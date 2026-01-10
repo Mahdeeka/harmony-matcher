@@ -10,7 +10,7 @@ const { Server } = require('socket.io');
 
 const { initDatabase, getDb } = require('./database');
 const { sendOTP, verifyOTP } = require('./services/sms');
-const { generateMatches, generateMoreMatches } = require('./services/matching');
+const { generateMatches, generateMoreMatches, cancelMatching, getMatchingStatus } = require('./services/matching');
 const { importFromHarmonyAPI } = require('./services/harmony');
 const { parseExcel } = require('./services/excel');
 const { generateToken, verifyToken } = require('./services/auth');
@@ -593,14 +593,23 @@ app.post('/api/events/:eventId/generate-matches', async (req, res) => {
 
 app.get('/api/events/:eventId/matching-status', (req, res) => {
   try {
-    const db = getDb();
-    const event = db.prepare(`SELECT matching_status FROM events WHERE id = ?`).get(req.params.eventId);
-    const matchCount = db.prepare(`SELECT COUNT(DISTINCT attendee_id) as count FROM matches WHERE event_id = ?`).get(req.params.eventId);
-    const totalAttendees = db.prepare(`SELECT COUNT(*) as count FROM attendees WHERE event_id = ?`).get(req.params.eventId);
-    res.json({ status: event?.matching_status || 'pending', processed: matchCount?.count || 0, total: totalAttendees?.count || 0 });
+    const { eventId } = req.params;
+    const status = getMatchingStatus(eventId);
+    res.json(status);
   } catch (error) {
     console.error('Get status error:', error);
     res.status(500).json({ error: 'فشل في جلب الحالة' });
+  }
+});
+
+app.post('/api/events/:eventId/cancel-matching', async (req, res) => {
+  try {
+    const { eventId } = req.params;
+    const result = await cancelMatching(eventId);
+    res.json(result);
+  } catch (error) {
+    console.error('Cancel matching error:', error);
+    res.status(400).json({ error: error.message || 'فشل في إلغاء المطابقة' });
   }
 });
 

@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import {
   ArrowRight, Users, Sparkles, CheckCircle, Clock,
   Plus, Trash2, Edit2, Download, Send, ExternalLink, RefreshCw,
-  FileSpreadsheet, Globe, Eye, BarChart3
+  FileSpreadsheet, Globe, Eye, BarChart3, X
 } from 'lucide-react';
 import axios from 'axios';
 import { useToast } from '../contexts/ToastContext';
@@ -94,6 +94,18 @@ function EventManager() {
       showInfo('بدأت عملية المطابقة بالذكاء الاصطناعي');
     } catch (error) {
       showError('فشل في بدء المطابقة');
+    }
+  };
+
+  const cancelMatching = async () => {
+    if (!confirm('هل أنت متأكد من إلغاء عملية المطابقة؟ سيتم إيقاف العملية فوراً.')) return;
+
+    try {
+      await axios.post(`/api/events/${eventId}/cancel-matching`);
+      showSuccess('تم إلغاء عملية المطابقة بنجاح');
+      fetchMatchingStatus(); // Refresh status
+    } catch (error) {
+      showError(error.response?.data?.error || 'فشل في إلغاء المطابقة');
     }
   };
 
@@ -243,9 +255,31 @@ function EventManager() {
               </button>
             )}
             {matchingStatus.status === 'processing' && (
-              <div className="text-center">
-                <div className="spinner mx-auto mb-2"></div>
-                <p className="text-gray-500 text-sm">جاري المطابقة...</p>
+              <div className="text-center w-full">
+                <div className="mb-3">
+                  <div className="spinner mx-auto mb-2"></div>
+                  <p className="text-gray-500 text-sm mb-2">جاري المطابقة...</p>
+                  {matchingStatus.progress !== undefined && (
+                    <div className="w-full bg-gray-200 rounded-full h-2 mb-2">
+                      <div
+                        className="bg-harmony-600 h-2 rounded-full transition-all duration-300"
+                        style={{ width: `${matchingStatus.progress}%` }}
+                      ></div>
+                    </div>
+                  )}
+                  {matchingStatus.progress !== undefined && (
+                    <p className="text-xs text-gray-400">
+                      {matchingStatus.progress.toFixed(1)}% مكتمل
+                    </p>
+                  )}
+                </div>
+                <button
+                  onClick={cancelMatching}
+                  className="btn-danger text-sm px-4 py-2"
+                >
+                  <X className="w-4 h-4 inline ml-1" />
+                  إلغاء المطابقة
+                </button>
               </div>
             )}
             {attendees.length < 2 && (

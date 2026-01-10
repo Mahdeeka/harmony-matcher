@@ -121,6 +121,23 @@ async function initDatabase() {
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
 
+    -- Matching jobs table (to track ongoing matching processes)
+    CREATE TABLE IF NOT EXISTS matching_jobs (
+      id TEXT PRIMARY KEY,
+      event_id TEXT NOT NULL,
+      status TEXT DEFAULT 'running', -- running, completed, cancelled, failed
+      progress REAL DEFAULT 0, -- 0-100
+      current_batch INTEGER DEFAULT 0,
+      total_batches INTEGER DEFAULT 0,
+      processed_count INTEGER DEFAULT 0,
+      total_count INTEGER DEFAULT 0,
+      started_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      completed_at TEXT,
+      cancelled_at TEXT,
+      error_message TEXT,
+      FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
+    );
+
     -- Attendees table
     CREATE TABLE IF NOT EXISTS attendees (
       id TEXT PRIMARY KEY,

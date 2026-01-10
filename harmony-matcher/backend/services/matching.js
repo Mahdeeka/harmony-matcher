@@ -2,7 +2,11 @@ const Anthropic = require('@anthropic-ai/sdk');
 const { getDb } = require('../database');
 const { v4: uuidv4 } = require('uuid');
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY,
+  // Increase timeout for large prompts
+  timeout: 60000, // 60 seconds
+});
 
 const SYSTEM_PROMPT = `أنت خبير في بناء العلاقات المهنية والتواصل الشبكي لمجتمع Harmony Community - منصة للمحترفين العرب.
 
@@ -25,18 +29,25 @@ const SYSTEM_PROMPT = `أنت خبير في بناء العلاقات المهن
 
 أجب بصيغة JSON فقط.`;
 
-function formatProfile(a) {
-  const parts = [`معرف: ${a.id}`, `الاسم: ${a.name}`];
+function formatProfile(a, compact = false) {
+  if (compact) {
+    // Compact version for candidates (essential info only)
+    return `${a.name}${a.title ? ` - ${a.title}` : ''}${a.company ? ` @ ${a.company}` : ''}${a.industry ? ` (${a.industry})` : ''}`;
+  }
+
+  // Full version for main attendee
+  const parts = [`الاسم: ${a.name}`];
   if (a.title) parts.push(`المسمى: ${a.title}`);
   if (a.company) parts.push(`الشركة: ${a.company}`);
   if (a.industry) parts.push(`المجال: ${a.industry}`);
-  if (a.professional_bio) parts.push(`نبذة مهنية: ${a.professional_bio}`);
-  if (a.personal_bio) parts.push(`نبذة شخصية: ${a.personal_bio}`);
+  if (a.professional_bio && a.professional_bio.length > 200) {
+    parts.push(`نبذة مهنية: ${a.professional_bio.substring(0, 200)}...`);
+  } else if (a.professional_bio) {
+    parts.push(`نبذة مهنية: ${a.professional_bio}`);
+  }
   if (a.skills) parts.push(`المهارات: ${a.skills}`);
   if (a.looking_for) parts.push(`يبحث عن: ${a.looking_for}`);
   if (a.offering) parts.push(`يقدم: ${a.offering}`);
-  if (a.location) parts.push(`الموقع: ${a.location}`);
-  if (a.languages) parts.push(`اللغات: ${a.languages}`);
   return parts.join('\n');
 }
 
@@ -122,7 +133,11 @@ ${formatProfile(attendee)}
 
 ---
 المرشحون المحتملون (مرتبون حسب التوافق الأساسي):
-${topCandidates.map((p, index) => `المرتبة ${index + 1} (توافق أساسي: ${p.compatibilityScore}%):\n${formatProfile(p)}`).join('\n---\n')}
+${topCandidates.map((p, index) => `المرتبة ${index + 1} (توافق أساسي: ${p.compatibilityScore}%):
+${formatProfile(p, true)}
+نبذة: ${p.professional_bio?.substring(0, 100) || 'غير محدد'}
+مهارات: ${p.skills || 'غير محدد'}
+يبحث عن: ${p.looking_for || 'غير محدد'}`).join('\n---\n')}
 
 ---
 اقترح أفضل 5 تطابقات من المرشحين أعلاه. لكل تطابق قدم:
@@ -138,8 +153,9 @@ ${topCandidates.map((p, index) => `المرتبة ${index + 1} (توافق أس�
 
   try {
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 2500,
+      model: 'claude-3-haiku-20240307', // Faster and cheaper model
+      max_tokens: 1500, // Reduced token limit
+      temperature: 0.7, // Add some creativity
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: prompt }]
     });
@@ -179,44 +195,117 @@ ${topCandidates.map((p, index) => `المرتبة ${index + 1} (توافق أس�
 
 async function generateMatches(eventId) {
   const db = getDb();
-  console.log(`🤖 Starting AI matching for event: ${eventId}`);
-  
-  const attendees = db.prepare(`SELECT * FROM attendees WHERE event_id = ?`).all(eventId);
-  if (attendees.length < 2) {
-    console.log('Not enough attendees');
-    return;
-  }
+  const startTime = Date.now();
+  const jobId = uuidv4();
 
-  console.log(`📊 Processing ${attendees.length} attendees...`);
-  db.prepare(`DELETE FROM matches WHERE event_id = ?`).run(eventId);
+  console.log(`🚀 Starting AI matching for event: ${eventId} (Job: ${jobId})`);
 
-  for (let i = 0; i < attendees.length; i++) {
-    const attendee = attendees[i];
-    console.log(`Processing ${i + 1}/${attendees.length}: ${attendee.name}`);
-    
-    try {
-      const matches = await getMatchesForAttendee(attendee, attendees);
-      
-      for (const match of matches) {
-        const matchedAttendee = attendees.find(a => a.id === match.id);
-        if (!matchedAttendee) continue;
-        
-        db.prepare(`INSERT INTO matches (id, event_id, attendee_id, matched_attendee_id, match_score, match_type, reasoning_ar, conversation_starters, batch_number) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
-          uuidv4(), eventId, attendee.id, match.id, match.score, match.type,
-          match.reasoning, JSON.stringify(match.conversation_starters || []), 1
-        );
+  // Create matching job record
+  db.prepare(`INSERT INTO matching_jobs (id, event_id, total_count, total_batches) VALUES (?, ?, ?, ?)`).run(
+    jobId, eventId, 0, 0
+  );
+
+  try {
+    const attendees = db.prepare(`SELECT * FROM attendees WHERE event_id = ?`).all(eventId);
+    if (attendees.length < 2) {
+      console.log('❌ Not enough attendees for matching');
+      db.prepare(`UPDATE matching_jobs SET status = 'failed', error_message = 'Not enough attendees' WHERE id = ?`).run(jobId);
+      return;
+    }
+
+    // Check if matches already exist for this event
+    const existingMatches = db.prepare(`SELECT COUNT(*) as count FROM matches WHERE event_id = ?`).get(eventId);
+    if (existingMatches.count > 0) {
+      console.log(`📋 Matches already exist (${existingMatches.count} matches). Use regenerate if needed.`);
+      db.prepare(`UPDATE matching_jobs SET status = 'failed', error_message = 'Matches already exist' WHERE id = ?`).run(jobId);
+      return;
+    }
+
+    // Update job with actual counts
+    const totalBatches = Math.ceil(attendees.length / 5);
+    db.prepare(`UPDATE matching_jobs SET total_count = ?, total_batches = ? WHERE id = ?`).run(
+      attendees.length, totalBatches, jobId
+    );
+
+    console.log(`📊 Processing ${attendees.length} attendees with optimized batch processing...`);
+    console.log(`⚡ Performance improvements: Concurrent batches + Reduced API calls + Compact prompts`);
+    db.prepare(`DELETE FROM matches WHERE event_id = ?`).run(eventId);
+
+  // Process in batches of 5 concurrent requests
+  const batchSize = 5;
+  for (let i = 0; i < attendees.length; i += batchSize) {
+    // Check if job was cancelled
+    const jobStatus = db.prepare(`SELECT status FROM matching_jobs WHERE id = ?`).get(jobId);
+    if (jobStatus.status === 'cancelled') {
+      console.log(`🛑 Matching cancelled for event: ${eventId}`);
+      db.prepare(`UPDATE matching_jobs SET cancelled_at = CURRENT_TIMESTAMP WHERE id = ?`).run(jobId);
+      return;
+    }
+
+    const currentBatch = Math.floor(i/batchSize) + 1;
+    const batch = attendees.slice(i, i + batchSize);
+    console.log(`Processing batch ${currentBatch}/${totalBatches}: ${batch.length} attendees`);
+
+    // Update progress
+    const progress = (currentBatch / totalBatches) * 100;
+    db.prepare(`UPDATE matching_jobs SET progress = ?, current_batch = ?, processed_count = ? WHERE id = ?`).run(
+      Math.round(progress), currentBatch, i + batch.length, jobId
+    );
+
+    // Process batch concurrently
+    const batchPromises = batch.map(async (attendee, index) => {
+      const globalIndex = i + index;
+      console.log(`Processing ${globalIndex + 1}/${attendees.length}: ${attendee.name}`);
+
+      try {
+        const matches = await getMatchesForAttendee(attendee, attendees);
+
+        // Insert matches for this attendee
+        for (const match of matches) {
+          const matchedAttendee = attendees.find(a => a.id === match.id);
+          if (!matchedAttendee) continue;
+
+          db.prepare(`INSERT INTO matches (id, event_id, attendee_id, matched_attendee_id, match_score, match_type, reasoning_ar, conversation_starters, batch_number) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+            uuidv4(), eventId, attendee.id, match.id, match.score, match.type,
+            match.reasoning, JSON.stringify(match.conversation_starters || []), 1
+          );
+        }
+
+        return { success: true, name: attendee.name };
+      } catch (error) {
+        console.error(`Error matching ${attendee.name}:`, error);
+        return { success: false, name: attendee.name, error };
       }
-      
-      await new Promise(r => setTimeout(r, 500)); // Rate limit
-    } catch (error) {
-      console.error(`Error matching ${attendee.name}:`, error);
+    });
+
+    // Wait for batch to complete
+    await Promise.all(batchPromises);
+
+    // Rate limit between batches (reduced for better performance)
+    if (i + batchSize < attendees.length) {
+      await new Promise(r => setTimeout(r, 500)); // 500ms between batches
     }
   }
 
   // Mark mutual matches
   db.prepare(`UPDATE matches SET is_mutual = 1 WHERE event_id = ? AND EXISTS (SELECT 1 FROM matches m2 WHERE m2.attendee_id = matches.matched_attendee_id AND m2.matched_attendee_id = matches.attendee_id AND m2.event_id = matches.event_id)`).run(eventId);
-  
+
+  const endTime = Date.now();
+  const duration = ((endTime - startTime) / 1000).toFixed(1);
+  const avgTimePerAttendee = (duration / attendees.length).toFixed(1);
+
+  // Update job as completed
+  db.prepare(`UPDATE matching_jobs SET status = 'completed', progress = 100, completed_at = CURRENT_TIMESTAMP WHERE id = ?`).run(jobId);
+
   console.log(`✅ Matching complete for event: ${eventId}`);
+  console.log(`⏱️  Total time: ${duration}s (${avgTimePerAttendee}s per attendee)`);
+  console.log(`📈 Performance: ${attendees.length} attendees processed in parallel batches`);
+
+  } catch (error) {
+    console.error(`❌ Matching failed for event: ${eventId}`, error);
+    db.prepare(`UPDATE matching_jobs SET status = 'failed', error_message = ? WHERE id = ?`).run(error.message, jobId);
+    throw error;
+  }
 }
 
 async function generateMoreMatches(attendeeId, batchNumber) {
@@ -241,4 +330,53 @@ async function generateMoreMatches(attendeeId, batchNumber) {
   db.prepare(`UPDATE matches SET is_mutual = 1 WHERE event_id = ? AND EXISTS (SELECT 1 FROM matches m2 WHERE m2.attendee_id = matches.matched_attendee_id AND m2.matched_attendee_id = matches.attendee_id AND m2.event_id = matches.event_id)`).run(attendee.event_id);
 }
 
-module.exports = { generateMatches, generateMoreMatches };
+async function cancelMatching(eventId) {
+  const db = getDb();
+
+  // Find the running job for this event
+  const runningJob = db.prepare(`SELECT id FROM matching_jobs WHERE event_id = ? AND status = 'running'`).get(eventId);
+
+  if (!runningJob) {
+    throw new Error('No running matching job found for this event');
+  }
+
+  // Update job status to cancelled
+  db.prepare(`UPDATE matching_jobs SET status = 'cancelled', cancelled_at = CURRENT_TIMESTAMP WHERE id = ?`).run(runningJob.id);
+
+  // Update event status
+  db.prepare(`UPDATE events SET matching_status = 'cancelled' WHERE id = ?`).run(eventId);
+
+  console.log(`🛑 Matching cancelled for event: ${eventId} (Job: ${runningJob.id})`);
+  return { success: true, message: 'Matching process cancelled successfully' };
+}
+
+function getMatchingStatus(eventId) {
+  const db = getDb();
+
+  // Get the latest job for this event
+  const job = db.prepare(`
+    SELECT * FROM matching_jobs
+    WHERE event_id = ?
+    ORDER BY started_at DESC
+    LIMIT 1
+  `).get(eventId);
+
+  if (!job) {
+    return { status: 'idle', progress: 0 };
+  }
+
+  return {
+    status: job.status,
+    progress: job.progress || 0,
+    currentBatch: job.current_batch || 0,
+    totalBatches: job.total_batches || 0,
+    processedCount: job.processed_count || 0,
+    totalCount: job.total_count || 0,
+    startedAt: job.started_at,
+    completedAt: job.completed_at,
+    cancelledAt: job.cancelled_at,
+    errorMessage: job.error_message
+  };
+}
+
+module.exports = { generateMatches, generateMoreMatches, cancelMatching, getMatchingStatus };
