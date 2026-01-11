@@ -11,6 +11,7 @@ const { Server } = require('socket.io');
 const { initDatabase, getDb } = require('./database');
 const { sendOTP, verifyOTP } = require('./services/sms');
 const { generateMatches, generateMoreMatches, cancelMatching, getMatchingStatus } = require('./services/matching');
+const matchingQueue = require('./services/matchingQueue');
 const { importFromHarmonyAPI } = require('./services/harmony');
 const { parseExcel } = require('./services/excel');
 const { generateToken, verifyToken } = require('./services/auth');
@@ -289,6 +290,61 @@ app.post('/api/auth/verify-otp', async (req, res) => {
   } catch (error) {
     console.error('OTP verify error:', error);
     res.status(500).json({ error: 'فشل في التحقق' });
+  }
+});
+
+// Phone-only login (NO OTP) - requested behavior
+app.post('/api/auth/phone-login', async (req, res) => {
+  try {
+    const { phone, eventId } = req.body;
+    if (!eventId) return res.status(400).json({ error: 'eventId مطلوب' });
+    if (!phone) return res.status(400).json({ error: 'رقم الهاتف مطلوب' });
+
+    const db = getDb();
+    const cleanPhone = phone.toString().replace(/\D/g, '');
+    if (cleanPhone.length < 8) return res.status(400).json({ error: 'رقم الهاتف غير صالح' });
+
+    // Match phone even if stored with separators/spaces/+
+    const attendee = db.prepare(`
+      SELECT * FROM attendees
+      WHERE event_id = ?
+        AND REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(phone, '-', ''), ' ', ''), '+', ''), '(', ''), ')', '') = ?
+      LIMIT 1
+    `).get(eventId, cleanPhone);
+
+    if (!attendee) {
+      return res.status(404).json({ error: 'لم يتم العثور على رقم الهاتف في قائمة المشاركين' });
+    }
+
+    // Ensure stats row exists + update login timestamps
+    try {
+      db.prepare(`INSERT OR IGNORE INTO attendee_stats (attendee_id, event_id) VALUES (?, ?)`).run(attendee.id, eventId);
+      db.prepare(`
+        UPDATE attendee_stats
+        SET first_login_at = COALESCE(first_login_at, CURRENT_TIMESTAMP),
+            last_login_at = CURRENT_TIMESTAMP,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE attendee_id = ? AND event_id = ?
+      `).run(attendee.id, eventId);
+    } catch (e) {
+      console.warn('Failed to update attendee_stats on login:', e.message);
+    }
+
+    const token = generateToken({ attendeeId: attendee.id, eventId });
+    res.json({
+      success: true,
+      token,
+      attendee: {
+        id: attendee.id,
+        name: attendee.name,
+        phone: attendee.phone,
+        email: attendee.email,
+        photo_url: attendee.photo_url
+      }
+    });
+  } catch (error) {
+    console.error('Phone login error:', error);
+    res.status(500).json({ error: 'فشل في تسجيل الدخول' });
   }
 });
 
@@ -589,16 +645,34 @@ app.post('/api/events/:eventId/generate-matches', async (req, res) => {
   try {
     const db = getDb();
     const { eventId } = req.params;
+    const { regenerate } = req.body;
+    
+    // If regenerate is true, clear existing matches first
+    if (regenerate) {
+      console.log(`🗑️ Clearing existing matches for event: ${eventId}`);
+      db.prepare(`DELETE FROM matches WHERE event_id = ?`).run(eventId);
+    }
+    
     db.prepare(`UPDATE events SET matching_status = 'processing' WHERE id = ?`).run(eventId);
     
-    generateMatches(eventId)
-      .then(() => getDb().prepare(`UPDATE events SET matching_status = 'completed' WHERE id = ?`).run(eventId))
-      .catch((error) => {
+    // Queue the matching run to prevent overlapping jobs
+    try {
+      matchingQueue.enqueue(eventId, async () => {
+        await generateMatches(eventId);
+        getDb().prepare(`UPDATE events SET matching_status = 'completed' WHERE id = ?`).run(eventId);
+      }).catch((error) => {
+        // If queued job fails
         console.error('Matching error:', error);
         getDb().prepare(`UPDATE events SET matching_status = 'failed' WHERE id = ?`).run(eventId);
       });
+    } catch (e) {
+      if (e.code === 'MATCHING_IN_PROGRESS') {
+        return res.status(409).json({ error: 'عملية المطابقة تعمل بالفعل (أو في الانتظار)' });
+      }
+      throw e;
+    }
     
-    res.json({ success: true, message: 'بدأت عملية المطابقة' });
+    res.json({ success: true, message: regenerate ? 'بدأت إعادة المطابقة' : 'بدأت عملية المطابقة' });
   } catch (error) {
     console.error('Generate matches error:', error);
     res.status(500).json({ error: 'فشل في بدء المطابقة' });
@@ -619,6 +693,14 @@ app.get('/api/events/:eventId/matching-status', (req, res) => {
 app.post('/api/events/:eventId/cancel-matching', async (req, res) => {
   try {
     const { eventId } = req.params;
+
+    // If job is queued but not running yet, cancel it here
+    if (matchingQueue.cancelQueued(eventId)) {
+      const db = getDb();
+      db.prepare(`UPDATE events SET matching_status = 'cancelled' WHERE id = ?`).run(eventId);
+      return res.json({ success: true, message: 'تم إلغاء المطابقة (كانت في الانتظار)' });
+    }
+
     const result = await cancelMatching(eventId);
     res.json(result);
   } catch (error) {
@@ -633,12 +715,128 @@ app.get('/api/attendees/:attendeeId/matches', (req, res) => {
     const matches = db.prepare(`
       SELECT m.*, a.name, a.phone, a.email, a.title, a.company, a.industry, a.professional_bio, a.personal_bio, a.photo_url, a.linkedin_url, a.skills, a.looking_for, a.offering
       FROM matches m JOIN attendees a ON m.matched_attendee_id = a.id
-      WHERE m.attendee_id = ? ORDER BY m.match_score DESC
+      WHERE m.attendee_id = ? AND COALESCE(m.is_hidden, 0) = 0
+      ORDER BY m.match_score DESC
     `).all(req.params.attendeeId);
     res.json({ matches });
   } catch (error) {
     console.error('Get matches error:', error);
     res.status(500).json({ error: 'فشل في جلب المطابقات' });
+  }
+});
+
+// Gamification/challenges stats (server-sourced, no mock data)
+app.get('/api/attendees/:attendeeId/gamification', (req, res) => {
+  try {
+    const db = getDb();
+    const { attendeeId } = req.params;
+
+    const attendee = db.prepare(`SELECT id, event_id FROM attendees WHERE id = ?`).get(attendeeId);
+    if (!attendee) return res.status(404).json({ error: 'Attendee not found' });
+
+    // Ensure stats exists
+    db.prepare(`INSERT OR IGNORE INTO attendee_stats (attendee_id, event_id) VALUES (?, ?)`).run(attendeeId, attendee.event_id);
+
+    const stats = db.prepare(`
+      SELECT *
+      FROM attendee_stats
+      WHERE attendee_id = ? AND event_id = ?
+    `).get(attendeeId, attendee.event_id) || {};
+
+    const matchAgg = db.prepare(`
+      SELECT
+        COUNT(*) as totalMatches,
+        SUM(CASE WHEN is_mutual = 1 THEN 1 ELSE 0 END) as mutualMatches,
+        SUM(CASE WHEN match_score >= 80 THEN 1 ELSE 0 END) as highQualityMatches
+      FROM matches
+      WHERE attendee_id = ? AND event_id = ? AND COALESCE(is_hidden, 0) = 0
+    `).get(attendeeId, attendee.event_id) || {};
+
+    const messagesSent = db.prepare(`
+      SELECT COUNT(*) as cnt
+      FROM messages
+      WHERE sender_id = ?
+    `).get(attendeeId)?.cnt || 0;
+
+    const event = db.prepare(`SELECT date FROM events WHERE id = ?`).get(attendee.event_id);
+
+    res.json({
+      attendeeId,
+      eventId: attendee.event_id,
+      stats: {
+        totalMatches: matchAgg.totalMatches || 0,
+        mutualMatches: matchAgg.mutualMatches || 0,
+        highQualityMatches: matchAgg.highQualityMatches || 0,
+        messagesSent,
+        profileViews: stats.profile_views || 0,
+        savedMatches: stats.saved_matches || 0,
+        hiddenMatches: stats.hidden_matches || 0,
+        firstLoginAt: stats.first_login_at || null,
+        lastLoginAt: stats.last_login_at || null,
+        eventDate: event?.date || null
+      }
+    });
+  } catch (error) {
+    console.error('Gamification stats error:', error);
+    res.status(500).json({ error: 'فشل في جلب بيانات الإنجازات' });
+  }
+});
+
+// Activity tracking for challenges
+app.post('/api/attendees/:attendeeId/activity', (req, res) => {
+  try {
+    const db = getDb();
+    const { attendeeId } = req.params;
+    const { type } = req.body || {};
+
+    const attendee = db.prepare(`SELECT id, event_id FROM attendees WHERE id = ?`).get(attendeeId);
+    if (!attendee) return res.status(404).json({ error: 'Attendee not found' });
+
+    db.prepare(`INSERT OR IGNORE INTO attendee_stats (attendee_id, event_id) VALUES (?, ?)`).run(attendeeId, attendee.event_id);
+
+    if (type === 'profile_view') {
+      db.prepare(`UPDATE attendee_stats SET profile_views = profile_views + 1, updated_at = CURRENT_TIMESTAMP WHERE attendee_id = ? AND event_id = ?`).run(attendeeId, attendee.event_id);
+    } else if (type === 'save_match') {
+      db.prepare(`UPDATE attendee_stats SET saved_matches = saved_matches + 1, updated_at = CURRENT_TIMESTAMP WHERE attendee_id = ? AND event_id = ?`).run(attendeeId, attendee.event_id);
+    } else if (type === 'hide_match') {
+      db.prepare(`UPDATE attendee_stats SET hidden_matches = hidden_matches + 1, updated_at = CURRENT_TIMESTAMP WHERE attendee_id = ? AND event_id = ?`).run(attendeeId, attendee.event_id);
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Activity tracking error:', error);
+    res.status(500).json({ error: 'فشل في تسجيل النشاط' });
+  }
+});
+
+// Hide/feedback a match (attendee says "not relevant")
+app.post('/api/matches/:matchId/feedback', (req, res) => {
+  try {
+    const db = getDb();
+    const { matchId } = req.params;
+    const { feedback = 'not_relevant', hide = true } = req.body || {};
+
+    db.prepare(`UPDATE matches SET feedback = ?, is_hidden = ? WHERE id = ?`).run(
+      feedback,
+      hide ? 1 : 0,
+      matchId
+    );
+
+    // Increment hidden counter for attendee stats (best effort)
+    if (hide) {
+      try {
+        const row = db.prepare(`SELECT attendee_id, event_id FROM matches WHERE id = ?`).get(matchId);
+        if (row?.attendee_id && row?.event_id) {
+          db.prepare(`INSERT OR IGNORE INTO attendee_stats (attendee_id, event_id) VALUES (?, ?)`).run(row.attendee_id, row.event_id);
+          db.prepare(`UPDATE attendee_stats SET hidden_matches = hidden_matches + 1, updated_at = CURRENT_TIMESTAMP WHERE attendee_id = ? AND event_id = ?`).run(row.attendee_id, row.event_id);
+        }
+      } catch (e) {}
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Match feedback error:', error);
+    res.status(500).json({ error: 'فشل في تحديث التطابق' });
   }
 });
 

@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import {
   ArrowRight, Trophy, Target, Star, Zap, Users, MessageCircle,
   Eye, Bookmark, Heart, Crown, Hand, Sparkles, CheckCircle,
-  Lightbulb, Briefcase, GraduationCap, Handshake, MessageSquare,
+  Lightbulb, Briefcase, GraduationCap, HeartHandshake, MessageSquare,
   ToggleLeft, ToggleRight, Save, RefreshCw
 } from 'lucide-react';
 import axios from 'axios';
@@ -12,7 +12,7 @@ import { useToast } from '../contexts/ToastContext';
 // Icon mapping for challenges
 const iconMap = {
   MessageCircle, Users, Star, Zap, Eye, Bookmark, Heart, Crown, Hand,
-  Sparkles, CheckCircle, Lightbulb, Briefcase, GraduationCap, Handshake,
+  Sparkles, CheckCircle, Lightbulb, Briefcase, GraduationCap, HeartHandshake,
   MessageSquare, Target, Trophy
 };
 

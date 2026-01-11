@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
   ArrowRight, Users, Sparkles, CheckCircle, Clock,
@@ -35,7 +35,8 @@ function EventManager() {
 
   useEffect(() => {
     // Poll matching status if processing
-    if (matchingStatus.status === 'processing') {
+    const isProcessing = matchingStatus.status === 'processing' || matchingStatus.status === 'running';
+    if (isProcessing) {
       const interval = setInterval(fetchMatchingStatus, 3000);
       return () => clearInterval(interval);
     }
@@ -87,11 +88,11 @@ function EventManager() {
     }
   };
 
-  const startMatching = async () => {
+  const startMatching = async (regenerate = false) => {
     try {
-      await axios.post(`/api/events/${eventId}/generate-matches`);
+      await axios.post(`/api/events/${eventId}/generate-matches`, { regenerate });
       setMatchingStatus({ ...matchingStatus, status: 'processing' });
-      showInfo('بدأت عملية المطابقة بالذكاء الاصطناعي');
+      showInfo(regenerate ? 'بدأت إعادة المطابقة بالذكاء الاصطناعي' : 'بدأت عملية المطابقة بالذكاء الاصطناعي');
     } catch (error) {
       showError('فشل في بدء المطابقة');
     }
@@ -173,6 +174,9 @@ function EventManager() {
     );
   }
 
+  const shouldRegenerate = ['completed', 'failed'].includes(matchingStatus.status);
+  const isProcessing = matchingStatus.status === 'processing' || matchingStatus.status === 'running';
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -233,11 +237,11 @@ function EventManager() {
             <div className="flex items-center gap-4">
               <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
                 matchingStatus.status === 'completed' ? 'bg-green-100' :
-                matchingStatus.status === 'processing' ? 'bg-yellow-100' : 'bg-gray-100'
+                isProcessing ? 'bg-yellow-100' : 'bg-gray-100'
               }`}>
                 {matchingStatus.status === 'completed' ? (
                   <CheckCircle className="w-6 h-6 text-green-600" />
-                ) : matchingStatus.status === 'processing' ? (
+                ) : isProcessing ? (
                   <RefreshCw className="w-6 h-6 text-yellow-600 animate-spin" />
                 ) : (
                   <Clock className="w-6 h-6 text-gray-400" />
@@ -246,7 +250,7 @@ function EventManager() {
               <div>
                 <p className="text-lg font-bold text-gray-900">
                   {matchingStatus.status === 'completed' ? 'مكتمل' :
-                   matchingStatus.status === 'processing' ? `${matchingStatus.processed}/${matchingStatus.total}` :
+                   isProcessing ? `${matchingStatus.processedCount || 0}/${matchingStatus.totalCount || 0}` :
                    'في الانتظار'}
                 </p>
                 <p className="text-gray-500 text-sm">حالة المطابقة</p>
@@ -255,13 +259,13 @@ function EventManager() {
           </div>
 
           <div className="card flex items-center justify-center">
-            {matchingStatus.status !== 'processing' && attendees.length >= 2 && (
-              <button onClick={startMatching} className="btn-success w-full">
+            {!isProcessing && attendees.length >= 2 && (
+              <button onClick={() => startMatching(shouldRegenerate)} className="btn-success w-full">
                 <Sparkles className="w-5 h-5" />
-                {matchingStatus.status === 'completed' ? 'إعادة المطابقة' : 'بدء المطابقة بالذكاء الاصطناعي'}
+                {shouldRegenerate ? 'إعادة المطابقة' : 'بدء المطابقة بالذكاء الاصطناعي'}
               </button>
             )}
-            {matchingStatus.status === 'processing' && (
+            {isProcessing && (
               <div className="text-center w-full">
                 <div className="mb-3">
                   <div className="spinner mx-auto mb-2"></div>
@@ -323,14 +327,7 @@ function EventManager() {
           </div>
 
           {/* Quick Actions */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="card p-4 text-center hover:shadow-md transition-shadow cursor-pointer"
-                 onClick={() => fileInputRef.current?.click()}>
-              <FileSpreadsheet className="w-8 h-8 text-blue-600 mx-auto mb-2" />
-              <div className="font-medium text-gray-900">رفع ملف Excel</div>
-              <div className="text-sm text-gray-500">استيراد بيانات متعددة</div>
-            </div>
-
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="card p-4 text-center hover:shadow-md transition-shadow cursor-pointer"
                  onClick={fetchHarmonyMembers}>
               <Globe className="w-8 h-8 text-green-600 mx-auto mb-2" />

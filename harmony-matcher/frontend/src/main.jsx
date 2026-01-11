@@ -4,8 +4,26 @@ import { BrowserRouter } from 'react-router-dom';
 import App from './App';
 import './index.css';
 
-// Register service worker for PWA
-if ('serviceWorker' in navigator) {
+// Dev cleanup: ensure no old service worker interferes with Vite HMR
+if (!import.meta.env.PROD && 'serviceWorker' in navigator) {
+  // Do this once to avoid reload loops
+  const key = '__hm_dev_sw_cleanup_done__';
+  if (localStorage.getItem(key) !== '1') {
+    localStorage.setItem(key, '1');
+    Promise.all([
+      navigator.serviceWorker.getRegistrations().then((regs) => Promise.all(regs.map((reg) => reg.unregister()))),
+      (typeof caches !== 'undefined'
+        ? caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k))))
+        : Promise.resolve())
+    ]).finally(() => {
+      // Reload to ensure we get fresh modules from Vite (fixes HMR websocket token mismatch)
+      window.location.reload();
+    });
+  }
+}
+
+// Register service worker for PWA (only in production to avoid dev WS issues)
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js')
       .then((registration) => {

@@ -131,6 +131,8 @@ async function initDatabase() {
       total_batches INTEGER DEFAULT 0,
       processed_count INTEGER DEFAULT 0,
       total_count INTEGER DEFAULT 0,
+      used_fallback INTEGER DEFAULT 0, -- 1 if any attendee used fallback instead of AI
+      fallback_count INTEGER DEFAULT 0, -- count of attendees that used fallback
       started_at TEXT DEFAULT CURRENT_TIMESTAMP,
       completed_at TEXT,
       cancelled_at TEXT,
@@ -171,11 +173,15 @@ async function initDatabase() {
       matched_attendee_id TEXT NOT NULL,
       match_score REAL,
       match_type TEXT,
+      match_source TEXT DEFAULT 'ai', -- ai | fallback
       reasoning TEXT,
       reasoning_ar TEXT,
       conversation_starters TEXT,
+      synergy_factors TEXT, -- JSON array
       batch_number INTEGER DEFAULT 1,
       is_mutual INTEGER DEFAULT 0,
+      is_hidden INTEGER DEFAULT 0,
+      feedback TEXT, -- e.g. not_relevant
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE,
       FOREIGN KEY (attendee_id) REFERENCES attendees(id) ON DELETE CASCADE,
@@ -293,6 +299,22 @@ async function initDatabase() {
       FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE,
       UNIQUE(attendee_id, event_id)
     );
+
+    -- Attendee stats for challenges/gamification
+    CREATE TABLE IF NOT EXISTS attendee_stats (
+      attendee_id TEXT NOT NULL,
+      event_id TEXT NOT NULL,
+      first_login_at TEXT,
+      last_login_at TEXT,
+      profile_views INTEGER DEFAULT 0,
+      saved_matches INTEGER DEFAULT 0,
+      hidden_matches INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (attendee_id, event_id),
+      FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE,
+      FOREIGN KEY (attendee_id) REFERENCES attendees(id) ON DELETE CASCADE
+    );
   `);
 
   // Create indexes
@@ -305,6 +327,7 @@ async function initDatabase() {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_event_challenges_event ON event_challenges(event_id)`);
     db.exec(`CREATE INDEX IF NOT EXISTS idx_attendee_challenges_attendee ON attendee_challenges(attendee_id)`);
     db.exec(`CREATE INDEX IF NOT EXISTS idx_attendee_points_event ON attendee_points(event_id)`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_stats_event_attendee ON attendee_stats(event_id, attendee_id)`);
   } catch (e) {
     // Indexes might already exist
   }
@@ -332,7 +355,8 @@ async function initDatabase() {
 
       // Match Type Challenges
       { key: 'find_mentor', name_ar: 'ابحث عن مرشد', name_en: 'Find a Mentor', description_ar: 'تواصل مع تطابق من نوع إرشاد', description_en: 'Connect with a mentorship match', icon: 'GraduationCap', category: 'match_type', trigger_type: 'match_type_contact', trigger_value: 1, default_points: 20, badge_color: 'emerald' },
-      { key: 'collaboration_mode', name_ar: 'وضع التعاون', name_en: 'Collaboration Mode', description_ar: 'راسل تطابق تعاوني', description_en: 'Message a collaborative match', icon: 'Handshake', category: 'match_type', trigger_type: 'match_type_contact', trigger_value: 1, default_points: 20, badge_color: 'blue' },
+      // lucide-react doesn't export "Handshake" in our version; use "HeartHandshake"
+      { key: 'collaboration_mode', name_ar: 'وضع التعاون', name_en: 'Collaboration Mode', description_ar: 'راسل تطابق تعاوني', description_en: 'Message a collaborative match', icon: 'HeartHandshake', category: 'match_type', trigger_type: 'match_type_contact', trigger_value: 1, default_points: 20, badge_color: 'blue' },
       { key: 'serendipity_seeker', name_ar: 'باحث الصدفة', name_en: 'Serendipity Seeker', description_ar: 'استكشف تطابق صدفة', description_en: 'Explore a serendipity match', icon: 'Sparkles', category: 'match_type', trigger_type: 'match_type_contact', trigger_value: 1, default_points: 25, badge_color: 'violet' },
 
       // Engagement Challenges
@@ -349,6 +373,19 @@ async function initDatabase() {
     }
     console.log('✅ Default challenges seeded');
   }
+
+  // Lightweight migrations for existing DBs (sql.js)
+  // Add new columns if they don't exist yet.
+  try { db.exec(`ALTER TABLE matching_jobs ADD COLUMN used_fallback INTEGER DEFAULT 0`); } catch (e) {}
+  try { db.exec(`ALTER TABLE matching_jobs ADD COLUMN fallback_count INTEGER DEFAULT 0`); } catch (e) {}
+
+  try { db.exec(`ALTER TABLE matches ADD COLUMN match_source TEXT DEFAULT 'ai'`); } catch (e) {}
+  try { db.exec(`ALTER TABLE matches ADD COLUMN synergy_factors TEXT`); } catch (e) {}
+  try { db.exec(`ALTER TABLE matches ADD COLUMN is_hidden INTEGER DEFAULT 0`); } catch (e) {}
+  try { db.exec(`ALTER TABLE matches ADD COLUMN feedback TEXT`); } catch (e) {}
+
+  // attendee_stats table migrations (for existing DBs)
+  try { db.exec(`CREATE TABLE IF NOT EXISTS attendee_stats (attendee_id TEXT NOT NULL, event_id TEXT NOT NULL, first_login_at TEXT, last_login_at TEXT, profile_views INTEGER DEFAULT 0, saved_matches INTEGER DEFAULT 0, hidden_matches INTEGER DEFAULT 0, created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (attendee_id, event_id))`); } catch (e) {}
 
   console.log('✅ Database initialized successfully');
   return db;

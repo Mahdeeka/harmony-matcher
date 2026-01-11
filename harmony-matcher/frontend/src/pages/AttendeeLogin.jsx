@@ -65,6 +65,7 @@ function AttendeeLogin() {
     setError('');
   };
 
+  // Phone-only login (NO OTP)
   const requestOTP = async (e) => {
     e.preventDefault();
 
@@ -79,13 +80,8 @@ function AttendeeLogin() {
         return;
       }
     } else {
-      cleanContact = email;
-      contactType = 'email';
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(cleanContact)) {
-        setError('البريد الإلكتروني غير صالح');
-        return;
-      }
+      setError('تسجيل الدخول متاح برقم الهاتف فقط حالياً');
+      return;
     }
 
     setLoading(true);
@@ -93,26 +89,19 @@ function AttendeeLogin() {
     setLoginAttempts(prev => prev + 1);
 
     try {
-      const payload = {
+      const response = await axios.post('/api/auth/phone-login', {
         eventId,
-        method: authMethod,
-        [contactType]: cleanContact,
-        rememberDevice
-      };
+        phone: cleanContact
+      });
 
-      await axios.post('/api/auth/request-otp', payload);
+      // Store authentication data
+      localStorage.setItem(`harmony_token_${eventId}`, response.data.token);
+      localStorage.setItem(`harmony_attendee_${eventId}`, JSON.stringify(response.data.attendee));
 
-      if (authMethod === 'phone') {
-        setStep('otp');
-        setCountdown(60);
-        setTimeout(() => otpRefs[0].current?.focus(), 100);
-        showInfo('تم إرسال رمز التحقق إلى هاتفك');
-      } else {
-        setStep('email-sent');
-        showSuccess('تم إرسال رابط تسجيل الدخول إلى بريدك الإلكتروني');
-      }
+      showSuccess('تم تسجيل الدخول بنجاح!');
+      navigate(`/event/${eventId}/matches`);
     } catch (error) {
-      const errorMsg = error.response?.data?.error || `فشل في ${authMethod === 'phone' ? 'إرسال رمز التحقق' : 'إرسال رابط الدخول'}`;
+      const errorMsg = error.response?.data?.error || 'فشل في تسجيل الدخول';
       setError(errorMsg);
       showError(errorMsg);
     } finally {
@@ -428,7 +417,7 @@ function AttendeeLogin() {
                 <div className="spinner border-white border-t-harmony-200"></div>
               ) : (
                 <>
-                  إرسال رمز التحقق
+                  دخول
                   <ArrowLeft className="w-5 h-5" />
                 </>
               )}

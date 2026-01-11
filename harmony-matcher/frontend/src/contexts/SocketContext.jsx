@@ -16,44 +16,37 @@ export const SocketProvider = ({ children }) => {
   const [isConnected, setIsConnected] = useState(false);
   const [messages, setMessages] = useState({});
   const [onlineUsers, setOnlineUsers] = useState(new Set());
-  const reconnectTimeoutRef = useRef(null);
+  const socketRef = useRef(null);
 
   useEffect(() => {
-    // Initialize socket connection
-    const initSocket = () => {
-      const newSocket = io(process.env.NODE_ENV === 'production' ? '/' : 'http://localhost:3001', {
+    // Only connect if we don't already have a socket
+    if (socketRef.current) return;
+
+    try {
+      const newSocket = io('http://localhost:3001', {
         transports: ['websocket', 'polling'],
         timeout: 20000,
-        forceNew: true,
+        reconnection: true,
+        reconnectionAttempts: 5,
+        reconnectionDelay: 1000,
       });
 
+      socketRef.current = newSocket;
+
       newSocket.on('connect', () => {
-        console.log('Connected to server');
+        console.log('Socket connected');
         setIsConnected(true);
         setSocket(newSocket);
-
-        // Clear any reconnection timeout
-        if (reconnectTimeoutRef.current) {
-          clearTimeout(reconnectTimeoutRef.current);
-          reconnectTimeoutRef.current = null;
-        }
       });
 
       newSocket.on('disconnect', () => {
-        console.log('Disconnected from server');
+        console.log('Socket disconnected');
         setIsConnected(false);
-        setSocket(null);
       });
 
       newSocket.on('connect_error', (error) => {
-        console.error('Connection error:', error);
+        console.log('Socket connection error (will retry):', error.message);
         setIsConnected(false);
-
-        // Attempt to reconnect after 5 seconds
-        reconnectTimeoutRef.current = setTimeout(() => {
-          console.log('Attempting to reconnect...');
-          initSocket();
-        }, 5000);
       });
 
       // Handle incoming messages
@@ -63,11 +56,6 @@ export const SocketProvider = ({ children }) => {
           ...prev,
           [conversationId]: [...(prev[conversationId] || []), message]
         }));
-      });
-
-      // Handle typing indicators
-      newSocket.on('typing', (data) => {
-        // Handle typing indicators
       });
 
       // Handle user status updates
@@ -82,18 +70,14 @@ export const SocketProvider = ({ children }) => {
           return newSet;
         });
       });
-
-      return newSocket;
-    };
-
-    const socketInstance = initSocket();
+    } catch (error) {
+      console.error('Failed to initialize socket:', error);
+    }
 
     return () => {
-      if (socketInstance) {
-        socketInstance.disconnect();
-      }
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
       }
     };
   }, []);

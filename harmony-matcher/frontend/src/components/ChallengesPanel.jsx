@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Trophy, Target, Star, Zap, Users, MessageCircle,
   Eye, Bookmark, Heart, Crown, Hand, Sparkles, CheckCircle,
-  Lightbulb, Briefcase, GraduationCap, Handshake, MessageSquare,
+  Lightbulb, Briefcase, GraduationCap, HeartHandshake, MessageSquare,
   ChevronDown, ChevronUp, Award, TrendingUp, X
 } from 'lucide-react';
 import axios from 'axios';
@@ -10,7 +10,7 @@ import axios from 'axios';
 // Icon mapping for challenges
 const iconMap = {
   MessageCircle, Users, Star, Zap, Eye, Bookmark, Heart, Crown, Hand,
-  Sparkles, CheckCircle, Lightbulb, Briefcase, GraduationCap, Handshake,
+  Sparkles, CheckCircle, Lightbulb, Briefcase, GraduationCap, HeartHandshake,
   MessageSquare, Target, Trophy
 };
 

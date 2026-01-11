@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   Users, Phone, MessageCircle, Linkedin, Star, ChevronDown,
   RefreshCw, LogOut, Sparkles, Heart, ExternalLink, Filter,
-  Search, X, ThumbsUp, MessageSquare, BookmarkPlus, Trophy,
+  Search, X, ThumbsUp, MessageSquare, BookmarkPlus, Trophy, MoreVertical,
   Target, Award
 } from 'lucide-react';
 import axios from 'axios';
@@ -38,6 +38,9 @@ function AttendeeMatches() {
   const [currentBatch, setCurrentBatch] = useState(1);
   const [expandedMatch, setExpandedMatch] = useState(null);
   const [event, setEvent] = useState(null);
+  const [newMatchIds, setNewMatchIds] = useState(new Set());
+  const [top5Only, setTop5Only] = useState(false);
+  const [openMenuFor, setOpenMenuFor] = useState(null);
 
   // Filtering and search states
   const [showFilters, setShowFilters] = useState(false);
@@ -63,6 +66,13 @@ function AttendeeMatches() {
   const [completedChallenge, setCompletedChallenge] = useState(null);
   const [challengeStats, setChallengeStats] = useState({ totalPoints: 0, challengesCompleted: 0 });
 
+  // Close overflow menus when tapping anywhere
+  useEffect(() => {
+    const onDown = () => setOpenMenuFor(null);
+    window.addEventListener('pointerdown', onDown);
+    return () => window.removeEventListener('pointerdown', onDown);
+  }, []);
+
   // Get unique industries from matches
   const availableIndustries = [...new Set(allMatches.map(m => m.industry).filter(Boolean))];
 
@@ -72,7 +82,7 @@ function AttendeeMatches() {
     const storedAttendee = localStorage.getItem(`harmony_attendee_${eventId}`);
 
     if (!token) {
-      navigate(`/event/${eventId}`);
+      navigate(`/event/${eventId}/login`);
       return;
     }
 
@@ -172,6 +182,9 @@ function AttendeeMatches() {
     // Sort by score (highest first)
     filtered.sort((a, b) => b.match_score - a.match_score);
 
+    // Top 5 today toggle
+    if (top5Only) filtered = filtered.slice(0, 5);
+
     setFilteredMatches(filtered);
   }, [allMatches, searchTerm, filters, savedMatches]);
 
@@ -209,7 +222,9 @@ function AttendeeMatches() {
     setLoadingMore(true);
     try {
       const response = await axios.post(`/api/attendees/${attendeeId}/more-matches`);
-      setAllMatches([...allMatches, ...response.data.matches]);
+      const incoming = response.data.matches || [];
+      setAllMatches([...allMatches, ...incoming]);
+      setNewMatchIds(new Set(incoming.map(m => m.id)));
       setCurrentBatch(response.data.batch);
       showInfo(`تم تحميل ${response.data.matches.length} تطابقات إضافية`);
     } catch (error) {
@@ -218,6 +233,18 @@ function AttendeeMatches() {
       setLoadingMore(false);
     }
   };
+
+  const hideMatch = async (matchId) => {
+    try {
+      await axios.post(`/api/matches/${matchId}/feedback`, { feedback: 'not_relevant', hide: true });
+      setAllMatches(prev => prev.filter(m => m.id !== matchId));
+      showInfo('تم إخفاء التطابق');
+    } catch (error) {
+      console.error('Error hiding match:', error);
+    }
+  };
+
+  const closeMenus = () => setOpenMenuFor(null);
 
   const toggleSaveMatch = (matchId) => {
     const newSaved = new Set(savedMatches);
@@ -279,7 +306,7 @@ function AttendeeMatches() {
   const logout = () => {
     localStorage.removeItem(`harmony_token_${eventId}`);
     localStorage.removeItem(`harmony_attendee_${eventId}`);
-    navigate(`/event/${eventId}`);
+    navigate(`/event/${eventId}/login`);
   };
 
   const callPhone = (phone) => {
@@ -306,30 +333,6 @@ function AttendeeMatches() {
   };
 
 
-  const sendDirectMessage = async () => {
-    if (!messageText.trim() || !selectedAttendee) return;
-
-    setSendingMessage(true);
-    try {
-      // For now, we'll use WhatsApp as the messaging method
-      // In the future, this could integrate with the in-app messaging system
-      const phone = selectedAttendee.phone;
-      const name = selectedAttendee.name;
-      const cleanPhone = phone.replace(/\D/g, '');
-      const waPhone = cleanPhone.startsWith('972') ? cleanPhone : `972${cleanPhone.replace(/^0/, '')}`;
-      const fullMessage = encodeURIComponent(messageText.trim());
-
-      window.open(`https://wa.me/${waPhone}?text=${fullMessage}`, '_blank');
-      showSuccess(`تم إرسال الرسالة إلى ${name}`);
-      setMessageModalOpen(false);
-      setMessageText('');
-    } catch (error) {
-      console.error('Send message error:', error);
-      showError('فشل في إرسال الرسالة');
-    } finally {
-      setSendingMessage(false);
-    }
-  };
 
   const getMatchScoreColor = (score) => {
     if (score >= 80) return 'text-green-600 bg-green-100';
@@ -654,7 +657,7 @@ function AttendeeMatches() {
             {filteredMatches.map((match) => (
               <div 
                 key={match.id} 
-                className="card match-card overflow-hidden"
+                className={`card match-card overflow-hidden ${newMatchIds.has(match.id) ? 'ring-2 ring-harmony-200' : ''}`}
               >
                 {/* Match Header */}
                 <div className="flex items-start gap-4">
@@ -686,10 +689,62 @@ function AttendeeMatches() {
                       <h3 className="text-lg font-bold text-gray-900 truncate">
                         {match.name}
                       </h3>
-                      <span className={`px-2 py-1 rounded-lg text-sm font-bold ${getMatchScoreColor(match.match_score)}`}>
-                        {Math.round(match.match_score)}%
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className={`px-3 py-1.5 rounded-xl text-sm font-extrabold ${getMatchScoreColor(match.match_score)}`}>
+                          {Math.round(match.match_score)}%
+                        </span>
+
+                        {/* Overflow menu (secondary actions) */}
+                        <div className="relative" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            className="icon-btn px-3"
+                            onClick={() => setOpenMenuFor(openMenuFor === match.id ? null : match.id)}
+                            title="المزيد"
+                          >
+                            <MoreVertical className="w-5 h-5" />
+                          </button>
+
+                          {openMenuFor === match.id && (
+                            <div className="menu-panel left-0">
+                              <button
+                                className="menu-item"
+                                onClick={() => { toggleSaveMatch(match.id); closeMenus(); }}
+                              >
+                                <BookmarkPlus className="w-4 h-4" />
+                                {savedMatches.has(match.id) ? 'إزالة من المحفوظات' : 'حفظ التطابق'}
+                              </button>
+
+                              {match.linkedin_url && (
+                                <a
+                                  className="menu-item"
+                                  href={match.linkedin_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={closeMenus}
+                                >
+                                  <Linkedin className="w-4 h-4" />
+                                  LinkedIn
+                                </a>
+                              )}
+
+                              <button
+                                className="menu-item menu-item-danger"
+                                onClick={() => { hideMatch(match.id); closeMenus(); }}
+                              >
+                                <X className="w-4 h-4" />
+                                غير مناسب / إخفاء
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     </div>
+                    {newMatchIds.has(match.id) && (
+                      <span className="inline-flex items-center gap-1 text-harmony-700 text-xs mt-1">
+                        <Sparkles className="w-3 h-3" />
+                        جديد
+                      </span>
+                    )}
                     {(match.title || match.company) && (
                       <p className="text-gray-600 text-sm truncate">
                         {match.title}{match.title && match.company && ' @ '}{match.company}
@@ -762,7 +817,20 @@ function AttendeeMatches() {
                 {/* Show More Toggle */}
                 {(match.professional_bio || match.skills || match.looking_for) && (
                   <button
-                    onClick={() => setExpandedMatch(expandedMatch === match.id ? null : match.id)}
+                    onClick={() => {
+                      const next = expandedMatch === match.id ? null : match.id;
+                      setExpandedMatch(next);
+                      // Track profile view for challenges (best-effort)
+                      if (next) {
+                        try {
+                          const storedAttendee = localStorage.getItem(`harmony_attendee_${eventId}`);
+                          const attendeeId = storedAttendee ? JSON.parse(storedAttendee).id : null;
+                          if (attendeeId) {
+                            axios.post(`/api/attendees/${attendeeId}/activity`, { type: 'profile_view' }).catch(() => {});
+                          }
+                        } catch (_) {}
+                      }
+                    }}
                     className="w-full text-center text-harmony-600 text-sm mt-3 hover:underline flex items-center justify-center gap-1"
                   >
                     {expandedMatch === match.id ? 'عرض أقل' : 'عرض المزيد'}
@@ -794,31 +862,6 @@ function AttendeeMatches() {
                     <MessageCircle className="w-4 h-4" />
                     <span className="hidden sm:inline">واتساب</span>
                   </button>
-
-                  {/* Save/Bookmark Button */}
-                  <button
-                    onClick={() => toggleSaveMatch(match.id)}
-                    className={`p-3 rounded-xl transition-all ${
-                      savedMatches.has(match.id)
-                        ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    }`}
-                    title={savedMatches.has(match.id) ? 'إزالة من المحفوظات' : 'حفظ التطابق'}
-                  >
-                    <BookmarkPlus className={`w-4 h-4 ${savedMatches.has(match.id) ? 'fill-current' : ''}`} />
-                  </button>
-
-                  {match.linkedin_url && (
-                    <a
-                      href={match.linkedin_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="btn-secondary py-3 px-4 flex items-center justify-center"
-                      title="LinkedIn"
-                    >
-                      <Linkedin className="w-4 h-4" />
-                    </a>
-                  )}
                 </div>
               </div>
             ))}
@@ -840,6 +883,17 @@ function AttendeeMatches() {
                 تحميل المزيد من التطابقات
               </>
             )}
+          </button>
+        )}
+
+        {/* Top 5 today toggle */}
+        {allMatches.length > 5 && (
+          <button
+            onClick={() => setTop5Only(v => !v)}
+            className="w-full btn-secondary mt-3 py-3 flex items-center justify-center gap-2"
+          >
+            <Trophy className="w-5 h-5" />
+            {top5Only ? 'عرض كل التطابقات' : 'Top 5 اليوم'}
           </button>
         )}
 
@@ -870,12 +924,13 @@ function AttendeeMatches() {
       />
 
       {/* Gamification Modal */}
-      <GamificationDashboard
-        attendee={attendee}
-        matches={allMatches}
-        onClose={() => setGamificationModalOpen(false)}
-        isOpen={gamificationModalOpen}
-      />
+      {gamificationModalOpen && (
+        <GamificationDashboard
+          attendee={attendee}
+          matches={allMatches}
+          onClose={() => setGamificationModalOpen(false)}
+        />
+      )}
 
       {/* Challenges Panel */}
       <ChallengesPanel

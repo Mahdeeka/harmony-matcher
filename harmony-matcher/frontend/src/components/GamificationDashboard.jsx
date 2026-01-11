@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Trophy, Target, TrendingUp, Award } from 'lucide-react';
 import AchievementBadge from './AchievementBadge';
+import axios from 'axios';
 
 const GamificationDashboard = ({ attendee, matches, onClose }) => {
   const [achievements, setAchievements] = useState([]);
@@ -12,74 +13,99 @@ const GamificationDashboard = ({ attendee, matches, onClose }) => {
   });
 
   useEffect(() => {
-    // Calculate achievements based on user activity
-    const calculateAchievements = () => {
+    const load = async () => {
+      if (!attendee?.id) return;
+
+      // Fetch server-sourced stats (no mock/random)
+      const res = await axios.get(`/api/attendees/${attendee.id}/gamification`);
+      const s = res.data?.stats || {};
+
+      setStats({
+        totalMatches: s.totalMatches || matches.length || 0,
+        mutualMatches: s.mutualMatches || 0,
+        messagesSent: s.messagesSent || 0,
+        profileViews: s.profileViews || 0,
+        savedMatches: s.savedMatches || 0,
+        hiddenMatches: s.hiddenMatches || 0,
+        highQualityMatches: s.highQualityMatches || 0,
+        firstLoginAt: s.firstLoginAt || null,
+        eventDate: s.eventDate || null
+      });
+
+      const isEarlyBird = (() => {
+        if (!s.firstLoginAt || !s.eventDate) return false;
+        const login = new Date(s.firstLoginAt);
+        const eventDate = new Date(s.eventDate);
+        if (Number.isNaN(login.getTime()) || Number.isNaN(eventDate.getTime())) return false;
+        return Math.abs(login.getTime() - eventDate.getTime()) <= 60 * 60 * 1000; // 1 hour
+      })();
+
       const userAchievements = [
         {
           id: 'first-match',
           type: 'first-match',
           title: 'أول تطابق',
           description: 'تهانينا! حصلت على تطابقك الأول',
-          earned: matches.length > 0
+          earned: (s.totalMatches || matches.length) > 0
         },
         {
           id: 'social-butterfly',
           type: 'social-butterfly',
           title: 'فراشة اجتماعية',
           description: 'تواصلت مع 5 أشخاص أو أكثر',
-          earned: matches.length >= 5
+          earned: (s.totalMatches || matches.length) >= 5
         },
         {
           id: 'conversation-starter',
           type: 'conversation-starter',
           title: 'مبتدئ حوار',
           description: 'أرسلت أكثر من 10 رسائل',
-          earned: stats.messagesSent >= 10,
-          progress: Math.min((stats.messagesSent / 10) * 100, 100)
+          earned: (s.messagesSent || 0) >= 10,
+          progress: Math.min(((s.messagesSent || 0) / 10) * 100, 100)
         },
         {
           id: 'networking-champion',
           type: 'networking-champion',
           title: 'بطل التواصل',
           description: 'حصلت على أكثر من 15 تطابق',
-          earned: matches.length >= 15
+          earned: (s.totalMatches || matches.length) >= 15
         },
         {
           id: 'early-bird',
           type: 'early-bird',
           title: 'مبكر النشاط',
           description: 'سجلت الدخول في أول ساعة من الفعالية',
-          earned: false // Would need event timing data
+          earned: isEarlyBird
         },
         {
           id: 'quality-connections',
           type: 'quality-connections',
           title: 'اتصالات عالية الجودة',
           description: 'حصلت على تطابقات بدرجة 80% أو أعلى',
-          earned: matches.some(match => match.match_score >= 80),
-          progress: matches.length > 0 ? (matches.filter(m => m.match_score >= 80).length / matches.length) * 100 : 0
+          earned: (s.highQualityMatches || 0) > 0,
+          progress: (s.totalMatches || matches.length) > 0 ? ((s.highQualityMatches || 0) / (s.totalMatches || matches.length)) * 100 : 0
         },
         {
           id: 'mutual-match',
           type: 'mutual-match',
           title: 'تطابق متبادل',
           description: 'حصلت على تطابق متبادل مع شخص آخر',
-          earned: matches.some(match => match.is_mutual === 1)
+          earned: (s.mutualMatches || 0) > 0
         }
       ];
 
       setAchievements(userAchievements);
+    };
 
-      // Calculate stats
+    load().catch(() => {
+      // fallback to local calculations if API fails
       setStats({
         totalMatches: matches.length,
         mutualMatches: matches.filter(m => m.is_mutual === 1).length,
-        messagesSent: Math.floor(Math.random() * 20), // Mock data
-        profileViews: Math.floor(Math.random() * 50) // Mock data
+        messagesSent: 0,
+        profileViews: 0
       });
-    };
-
-    calculateAchievements();
+    });
   }, [matches, attendee]);
 
   const earnedCount = achievements.filter(a => a.earned).length;

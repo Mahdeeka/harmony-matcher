@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { io } from 'socket.io-client';
-import { useToast } from './ToastContext';
 
 const MessagingContext = createContext();
 
@@ -20,11 +19,13 @@ export const MessagingProvider = ({ children }) => {
   const [messages, setMessages] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [typingUsers, setTypingUsers] = useState(new Set());
-  const { showError } = useToast();
 
   // Initialize socket connection
   useEffect(() => {
-    const token = localStorage.getItem('harmony_token_current');
+    // Try to find any harmony token (for attendees)
+    const harmonyTokenKeys = Object.keys(localStorage).filter(key => key.startsWith('harmony_token_'));
+    const token = harmonyTokenKeys.length > 0 ? localStorage.getItem(harmonyTokenKeys[0]) : null;
+
     if (!token) return;
 
     const newSocket = io('http://localhost:3001', {
@@ -95,39 +96,47 @@ export const MessagingProvider = ({ children }) => {
   }, [socket]);
 
   const loadConversations = useCallback(async (eventId) => {
+    if (!eventId) return;
     try {
-      const token = localStorage.getItem('harmony_token_current');
+      const token = localStorage.getItem('harmony_token_current') || 
+                    localStorage.getItem(`harmony_token_${eventId}`);
+      if (!token) return;
+      
       const response = await fetch(`/api/events/${eventId}/conversations`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await response.json();
-      setConversations(data.conversations);
+      const convs = data.conversations || [];
+      setConversations(convs);
 
       // Calculate total unread count
-      const totalUnread = data.conversations.reduce((sum, conv) => sum + (conv.unread_count || 0), 0);
+      const totalUnread = convs.reduce((sum, conv) => sum + (conv.unread_count || 0), 0);
       setUnreadCount(totalUnread);
     } catch (error) {
       console.error('Load conversations error:', error);
-      showError('فشل في تحميل المحادثات');
     }
-  }, [showError]);
+  }, []);
 
   const loadMessages = useCallback(async (conversationId) => {
+    if (!conversationId) return;
     try {
-      const token = localStorage.getItem('harmony_token_current');
+      const harmonyTokenKeys = Object.keys(localStorage).filter(key => key.startsWith('harmony_token_'));
+      const token = localStorage.getItem('harmony_token_current') || 
+                    (harmonyTokenKeys.length > 0 ? localStorage.getItem(harmonyTokenKeys[0]) : null);
+      if (!token) return;
+      
       const response = await fetch(`/api/conversations/${conversationId}/messages`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await response.json();
-      setMessages(data.messages);
+      setMessages(data.messages || []);
     } catch (error) {
       console.error('Load messages error:', error);
-      showError('فشل في تحميل الرسائل');
     }
-  }, [showError]);
+  }, []);
 
   const sendMessage = useCallback(async (conversationId, content, messageType = 'text') => {
-    if (!socket || !content.trim()) return;
+    if (!socket || !content?.trim()) return;
 
     try {
       socket.emit('send_message', {
@@ -137,9 +146,8 @@ export const MessagingProvider = ({ children }) => {
       });
     } catch (error) {
       console.error('Send message error:', error);
-      showError('فشل في إرسال الرسالة');
     }
-  }, [socket, showError]);
+  }, [socket]);
 
   const joinConversation = useCallback((conversationId) => {
     if (socket) {
@@ -183,6 +191,7 @@ export const MessagingProvider = ({ children }) => {
       console.error('Mark as read error:', error);
     }
   }, [activeConversation]);
+
 
   const createConversation = useCallback(async (eventId, participant1Id, participant2Id) => {
     // This will be handled by the sendMessage function when no conversation exists

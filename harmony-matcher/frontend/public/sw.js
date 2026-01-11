@@ -2,18 +2,44 @@ const CACHE_NAME = 'harmony-matcher-v1';
 const STATIC_CACHE = 'harmony-static-v1';
 const DYNAMIC_CACHE = 'harmony-dynamic-v1';
 
+// In development (localhost), this service worker causes more harm than good (stale assets + broken HMR).
+// Self-unregister and do not intercept requests.
+const IS_LOCALHOST = self.location.hostname === 'localhost' || self.location.hostname === '127.0.0.1';
+if (IS_LOCALHOST) {
+  self.addEventListener('install', (event) => {
+    event.waitUntil(
+      (async () => {
+        try {
+          await self.registration.unregister();
+          const keys = await caches.keys();
+          await Promise.all(keys.map((k) => caches.delete(k)));
+        } catch (_) {}
+      })()
+    );
+    self.skipWaiting();
+  });
+
+  self.addEventListener('activate', (event) => {
+    event.waitUntil(self.clients.claim());
+  });
+
+  self.addEventListener('fetch', () => {
+    // no-op in dev
+  });
+
+  // stop here for localhost
+}
+
 // Assets to cache immediately
 const STATIC_ASSETS = [
   '/',
-  '/static/js/bundle.js',
-  '/static/css/main.css',
   '/manifest.json',
-  '/icon-192x192.png',
-  '/icon-512x512.png'
+  '/icon.svg'
 ];
 
 // Install event - cache static assets
 self.addEventListener('install', (event) => {
+  if (IS_LOCALHOST) return;
   console.log('Service Worker: Installing...');
   event.waitUntil(
     caches.open(STATIC_CACHE)
@@ -30,6 +56,7 @@ self.addEventListener('install', (event) => {
 
 // Activate event - clean up old caches
 self.addEventListener('activate', (event) => {
+  if (IS_LOCALHOST) return;
   console.log('Service Worker: Activating...');
   event.waitUntil(
     caches.keys().then((cacheNames) => {
@@ -48,6 +75,7 @@ self.addEventListener('activate', (event) => {
 
 // Fetch event - serve from cache or network
 self.addEventListener('fetch', (event) => {
+  if (IS_LOCALHOST) return;
   const { request } = event;
   const url = new URL(request.url);
 

@@ -15,6 +15,7 @@ import EventAnalytics from './pages/EventAnalytics';
 import EventChallenges from './pages/EventChallenges';
 import AttendeeLogin from './pages/AttendeeLogin';
 import AttendeeMatches from './pages/AttendeeMatches';
+import EventLanding from './pages/EventLanding';
 
 // Global components
 import PWAInstallPrompt from './components/PWAInstallPrompt';
@@ -39,7 +40,7 @@ function App() {
                   <Route path="/admin/event/:eventId/attendee/:attendeeId" element={<AdminAttendeeMatches />} />
 
                   {/* Attendee Routes */}
-                  <Route path="/event/:eventId" element={<AttendeeLogin />} />
+                  <Route path="/event/:eventId" element={<EventLanding />} />
                   <Route path="/event/:eventId/login" element={<AttendeeLogin />} />
                   <Route path="/event/:eventId/matches" element={<AttendeeMatches />} />
                 </Routes>
