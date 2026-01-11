@@ -394,6 +394,13 @@ app.post('/api/events', (req, res) => {
       return res.status(500).json({ error: 'فشل في إنشاء الحدث', details: error.message });
     }
 
+    // Default: enable all challenges for newly created events (admin can disable/edit later)
+    try {
+      enableAllChallengesForEvent(id);
+    } catch (e) {
+      console.warn('Enable default challenges warning:', e?.message || e);
+    }
+
     console.log('Event created successfully');
     res.json({ success: true, event: { id, name, name_ar, description, date, location } });
   } catch (error) {
