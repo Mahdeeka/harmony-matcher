@@ -5,21 +5,47 @@ import App from './App';
 import './index.css';
 
 // Dev cleanup: ensure no old service worker interferes with Vite HMR
+// Important: avoid any reload loops (e.g. when localStorage is unavailable).
 if (!import.meta.env.PROD && 'serviceWorker' in navigator) {
-  // Do this once to avoid reload loops
-  const key = '__hm_dev_sw_cleanup_done__';
-  if (localStorage.getItem(key) !== '1') {
-    localStorage.setItem(key, '1');
-    Promise.all([
-      navigator.serviceWorker.getRegistrations().then((regs) => Promise.all(regs.map((reg) => reg.unregister()))),
-      (typeof caches !== 'undefined'
-        ? caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k))))
-        : Promise.resolve())
-    ]).finally(() => {
-      // Reload to ensure we get fresh modules from Vite (fixes HMR websocket token mismatch)
-      window.location.reload();
-    });
-  }
+  (async () => {
+    const key = '__hm_dev_sw_cleanup_done__';
+
+    let alreadyDone = false;
+    try {
+      alreadyDone = localStorage.getItem(key) === '1';
+    } catch (_) {
+      alreadyDone = window.__hm_dev_sw_cleanup_done__ === true;
+    }
+    if (alreadyDone) return;
+
+    try {
+      localStorage.setItem(key, '1');
+    } catch (_) {
+      window.__hm_dev_sw_cleanup_done__ = true;
+    }
+
+    let didCleanup = false;
+    try {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      if (regs?.length) {
+        await Promise.all(regs.map((reg) => reg.unregister()));
+        didCleanup = true;
+      }
+    } catch (_) {}
+
+    try {
+      if (typeof caches !== 'undefined') {
+        const keys = await caches.keys();
+        if (keys?.length) {
+          await Promise.all(keys.map((k) => caches.delete(k)));
+          didCleanup = true;
+        }
+      }
+    } catch (_) {}
+
+    // Only reload if we actually removed something (prevents "refresh loop" feelings).
+    if (didCleanup) window.location.reload();
+  })();
 }
 
 // Register service worker for PWA (only in production to avoid dev WS issues)
