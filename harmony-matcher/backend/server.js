@@ -22,6 +22,20 @@ const {
   markMessagesAsRead,
   getUnreadCount
 } = require('./services/messaging');
+const {
+  getAllChallenges,
+  getEventChallenges,
+  getActiveEventChallenges,
+  configureEventChallenges,
+  toggleEventChallenge,
+  getAttendeeProgress,
+  updateChallengeProgress,
+  getEventLeaderboard,
+  getAttendeeRank,
+  getAttendeeCompletedChallenges,
+  initializeAttendeeProgress,
+  enableAllChallengesForEvent
+} = require('./services/challenges');
 
 // Initialize Express app
 const app = express();
@@ -651,6 +665,189 @@ app.post('/api/attendees/:attendeeId/more-matches', async (req, res) => {
 });
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
+
+// ============================================
+// CHALLENGES ROUTES
+// ============================================
+
+// Get all available challenges (admin)
+app.get('/api/challenges', (req, res) => {
+  try {
+    const challenges = getAllChallenges();
+    res.json({ challenges });
+  } catch (error) {
+    console.error('Get challenges error:', error);
+    res.status(500).json({ error: 'فشل في جلب التحديات' });
+  }
+});
+
+// Get challenges for an event (with configuration status)
+app.get('/api/events/:eventId/challenges', (req, res) => {
+  try {
+    const challenges = getEventChallenges(req.params.eventId);
+    res.json({ challenges });
+  } catch (error) {
+    console.error('Get event challenges error:', error);
+    res.status(500).json({ error: 'فشل في جلب تحديات الفعالية' });
+  }
+});
+
+// Get active challenges for an event (attendee view)
+app.get('/api/events/:eventId/challenges/active', (req, res) => {
+  try {
+    const challenges = getActiveEventChallenges(req.params.eventId);
+    res.json({ challenges });
+  } catch (error) {
+    console.error('Get active challenges error:', error);
+    res.status(500).json({ error: 'فشل في جلب التحديات النشطة' });
+  }
+});
+
+// Configure challenges for an event (admin)
+app.post('/api/events/:eventId/challenges', (req, res) => {
+  try {
+    const { challenges } = req.body;
+    const result = configureEventChallenges(req.params.eventId, challenges);
+    res.json(result);
+  } catch (error) {
+    console.error('Configure challenges error:', error);
+    res.status(500).json({ error: 'فشل في تكوين التحديات' });
+  }
+});
+
+// Toggle a single challenge for an event (admin)
+app.patch('/api/events/:eventId/challenges/:challengeId', (req, res) => {
+  try {
+    const { is_active, points } = req.body;
+    const result = toggleEventChallenge(req.params.eventId, req.params.challengeId, is_active, points);
+    res.json(result);
+  } catch (error) {
+    console.error('Toggle challenge error:', error);
+    res.status(500).json({ error: 'فشل في تحديث التحدي' });
+  }
+});
+
+// Enable all challenges with defaults for an event (admin)
+app.post('/api/events/:eventId/challenges/enable-all', (req, res) => {
+  try {
+    const result = enableAllChallengesForEvent(req.params.eventId);
+    res.json(result);
+  } catch (error) {
+    console.error('Enable all challenges error:', error);
+    res.status(500).json({ error: 'فشل في تفعيل التحديات' });
+  }
+});
+
+// Get attendee's challenge progress
+app.get('/api/attendees/:attendeeId/challenges', (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (!token) {
+      return res.status(401).json({ error: 'غير مصرح' });
+    }
+
+    const decoded = verifyToken(token);
+    const progress = getAttendeeProgress(req.params.attendeeId, decoded.eventId);
+    res.json(progress);
+  } catch (error) {
+    console.error('Get attendee progress error:', error);
+    res.status(500).json({ error: 'فشل في جلب تقدم التحديات' });
+  }
+});
+
+// Update attendee's challenge progress
+app.post('/api/attendees/:attendeeId/challenges/:challengeKey/progress', (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (!token) {
+      return res.status(401).json({ error: 'غير مصرح' });
+    }
+
+    const decoded = verifyToken(token);
+    const { increment = 1 } = req.body;
+    const result = updateChallengeProgress(req.params.attendeeId, decoded.eventId, req.params.challengeKey, increment);
+
+    if (!result) {
+      return res.status(404).json({ error: 'التحدي غير موجود أو غير نشط' });
+    }
+
+    // If challenge was just completed, emit via Socket.IO
+    if (result.completed && connectedUsers.has(req.params.attendeeId)) {
+      io.to(connectedUsers.get(req.params.attendeeId)).emit('challenge_completed', {
+        challenge: result.challenge,
+        pointsEarned: result.pointsEarned
+      });
+    }
+
+    res.json(result);
+  } catch (error) {
+    console.error('Update challenge progress error:', error);
+    res.status(500).json({ error: 'فشل في تحديث التقدم' });
+  }
+});
+
+// Get event leaderboard
+app.get('/api/events/:eventId/leaderboard', (req, res) => {
+  try {
+    const { limit = 20 } = req.query;
+    const leaderboard = getEventLeaderboard(req.params.eventId, parseInt(limit));
+    res.json({ leaderboard });
+  } catch (error) {
+    console.error('Get leaderboard error:', error);
+    res.status(500).json({ error: 'فشل في جلب لوحة المتصدرين' });
+  }
+});
+
+// Get attendee's rank
+app.get('/api/attendees/:attendeeId/rank', (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (!token) {
+      return res.status(401).json({ error: 'غير مصرح' });
+    }
+
+    const decoded = verifyToken(token);
+    const rankData = getAttendeeRank(req.params.attendeeId, decoded.eventId);
+    res.json(rankData);
+  } catch (error) {
+    console.error('Get attendee rank error:', error);
+    res.status(500).json({ error: 'فشل في جلب الترتيب' });
+  }
+});
+
+// Get attendee's completed challenges (badges)
+app.get('/api/attendees/:attendeeId/badges', (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (!token) {
+      return res.status(401).json({ error: 'غير مصرح' });
+    }
+
+    const decoded = verifyToken(token);
+    const badges = getAttendeeCompletedChallenges(req.params.attendeeId, decoded.eventId);
+    res.json({ badges });
+  } catch (error) {
+    console.error('Get attendee badges error:', error);
+    res.status(500).json({ error: 'فشل في جلب الشارات' });
+  }
+});
+
+// Initialize attendee progress when they log in
+app.post('/api/attendees/:attendeeId/challenges/initialize', (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (!token) {
+      return res.status(401).json({ error: 'غير مصرح' });
+    }
+
+    const decoded = verifyToken(token);
+    initializeAttendeeProgress(req.params.attendeeId, decoded.eventId);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Initialize attendee progress error:', error);
+    res.status(500).json({ error: 'فشل في تهيئة التقدم' });
+  }
+});
 
 // Start server
 async function startServer() {

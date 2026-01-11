@@ -3,7 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   Users, Phone, MessageCircle, Linkedin, Star, ChevronDown,
   RefreshCw, LogOut, Sparkles, Heart, ExternalLink, Filter,
-  Search, X, ThumbsUp, MessageSquare, BookmarkPlus, Trophy
+  Search, X, ThumbsUp, MessageSquare, BookmarkPlus, Trophy,
+  Target, Award
 } from 'lucide-react';
 import axios from 'axios';
 import { useToast } from '../contexts/ToastContext';
@@ -12,6 +13,9 @@ import SkeletonLoader from '../components/SkeletonLoader';
 import MessagingNav from '../components/MessagingNav';
 import MessageModal from '../components/MessageModal';
 import GamificationDashboard from '../components/GamificationDashboard';
+import ChallengesPanel from '../components/ChallengesPanel';
+import Leaderboard from '../components/Leaderboard';
+import { ChallengeCompletedToast } from '../components/ChallengeBadges';
 
 function AttendeeMatches() {
   const { eventId } = useParams();
@@ -53,6 +57,12 @@ function AttendeeMatches() {
   // Gamification modal state
   const [gamificationModalOpen, setGamificationModalOpen] = useState(false);
 
+  // Challenges state
+  const [challengesPanelOpen, setChallengesPanelOpen] = useState(false);
+  const [leaderboardOpen, setLeaderboardOpen] = useState(false);
+  const [completedChallenge, setCompletedChallenge] = useState(null);
+  const [challengeStats, setChallengeStats] = useState({ totalPoints: 0, challengesCompleted: 0 });
+
   // Get unique industries from matches
   const availableIndustries = [...new Set(allMatches.map(m => m.industry).filter(Boolean))];
 
@@ -67,12 +77,64 @@ function AttendeeMatches() {
     }
 
     if (storedAttendee) {
-      setAttendee(JSON.parse(storedAttendee));
+      const parsedAttendee = JSON.parse(storedAttendee);
+      setAttendee(parsedAttendee);
+      initializeChallenges(parsedAttendee.id);
+      fetchChallengeStats(parsedAttendee.id);
     }
 
     fetchEvent();
     fetchMatches();
   }, [eventId]);
+
+  const initializeChallenges = async (attendeeId) => {
+    try {
+      const token = localStorage.getItem(`harmony_token_${eventId}`);
+      await axios.post(`/api/attendees/${attendeeId}/challenges/initialize`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+    } catch (error) {
+      console.error('Error initializing challenges:', error);
+    }
+  };
+
+  const fetchChallengeStats = async (attendeeId) => {
+    try {
+      const token = localStorage.getItem(`harmony_token_${eventId}`);
+      const response = await axios.get(`/api/attendees/${attendeeId}/challenges`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setChallengeStats({
+        totalPoints: response.data.totalPoints || 0,
+        challengesCompleted: response.data.challengesCompleted || 0
+      });
+    } catch (error) {
+      console.error('Error fetching challenge stats:', error);
+    }
+  };
+
+  const updateChallengeProgress = async (challengeKey, increment = 1) => {
+    if (!attendee) return;
+
+    try {
+      const token = localStorage.getItem(`harmony_token_${eventId}`);
+      const response = await axios.post(
+        `/api/attendees/${attendee.id}/challenges/${challengeKey}/progress`,
+        { increment },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      if (response.data.completed) {
+        setCompletedChallenge({
+          challenge: response.data.challenge,
+          points: response.data.pointsEarned
+        });
+        fetchChallengeStats(attendee.id);
+      }
+    } catch (error) {
+      console.error('Error updating challenge progress:', error);
+    }
+  };
 
   // Filter and search matches
   useEffect(() => {
@@ -165,6 +227,8 @@ function AttendeeMatches() {
     } else {
       newSaved.add(matchId);
       showSuccess('تم حفظ التطابق');
+      // Track bookmark challenge
+      updateChallengeProgress('bookmark_collector');
     }
     setSavedMatches(newSaved);
   };
@@ -197,9 +261,19 @@ function AttendeeMatches() {
     return count;
   };
 
-  const openMessageModal = (attendee) => {
-    setSelectedAttendee(attendee);
+  const openMessageModal = (matchData) => {
+    setSelectedAttendee(matchData);
     setMessageModalOpen(true);
+    // Track profile view for explorer challenge
+    updateChallengeProgress('the_explorer');
+    // Track high score contact
+    if (matchData.match_score >= 90) {
+      updateChallengeProgress('perfect_match');
+    }
+    // Track mutual match
+    if (matchData.is_mutual === 1) {
+      updateChallengeProgress('mutual_connection');
+    }
   };
 
   const logout = () => {
@@ -213,13 +287,22 @@ function AttendeeMatches() {
     showInfo('جاري الاتصال...');
   };
 
-  const openWhatsApp = (phone, name) => {
+  const openWhatsApp = (phone, name, matchData) => {
     // Format phone for WhatsApp
     const cleanPhone = phone.replace(/\D/g, '');
     const waPhone = cleanPhone.startsWith('972') ? cleanPhone : `972${cleanPhone.replace(/^0/, '')}`;
     const message = encodeURIComponent(`مرحباً ${name}، تواصلت معك عبر Harmony Matcher 👋`);
     window.open(`https://wa.me/${waPhone}?text=${message}`, '_blank');
     showSuccess(`تم فتح واتساب للتواصل مع ${name}`);
+    // Track messaging challenges
+    updateChallengeProgress('first_contact');
+    updateChallengeProgress('the_trio');
+    updateChallengeProgress('high_five');
+    updateChallengeProgress('network_master');
+    // Track industry hopper if different industry
+    if (matchData?.industry) {
+      updateChallengeProgress('industry_hopper');
+    }
   };
 
 
@@ -332,6 +415,27 @@ function AttendeeMatches() {
                 }}
                 currentUser={attendee}
               />
+              {/* Challenges Button */}
+              <button
+                onClick={() => setChallengesPanelOpen(true)}
+                className="relative text-gray-400 hover:text-purple-600 transition-colors"
+                title="التحديات"
+              >
+                <Target className="w-5 h-5" />
+                {challengeStats.totalPoints > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-purple-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">
+                    {challengeStats.challengesCompleted}
+                  </span>
+                )}
+              </button>
+              {/* Leaderboard Button */}
+              <button
+                onClick={() => setLeaderboardOpen(true)}
+                className="text-gray-400 hover:text-amber-600 transition-colors"
+                title="المتصدرين"
+              >
+                <Award className="w-5 h-5" />
+              </button>
               <button
                 onClick={() => setGamificationModalOpen(true)}
                 className="text-gray-400 hover:text-yellow-600 dark:hover:text-yellow-400 transition-colors"
@@ -371,6 +475,40 @@ function AttendeeMatches() {
             </p>
           </div>
         </div>
+
+        {/* Challenges Quick Stats */}
+        {(challengeStats.totalPoints > 0 || challengeStats.challengesCompleted > 0) && (
+          <div
+            onClick={() => setChallengesPanelOpen(true)}
+            className="bg-white rounded-xl shadow-sm border border-purple-100 p-4 mb-6 cursor-pointer hover:shadow-md transition-all"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center">
+                  <Trophy className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <p className="font-bold text-gray-900">تقدمك في التحديات</p>
+                  <p className="text-sm text-gray-500">
+                    {challengeStats.challengesCompleted} تحدي مكتمل • {challengeStats.totalPoints} نقطة
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setLeaderboardOpen(true);
+                  }}
+                  className="px-3 py-1.5 bg-amber-100 text-amber-700 rounded-lg text-sm font-medium hover:bg-amber-200 transition-colors"
+                >
+                  المتصدرين
+                </button>
+                <ChevronDown className="w-5 h-5 text-gray-400" />
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Search and Filters */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-6">
@@ -650,7 +788,7 @@ function AttendeeMatches() {
                   </button>
 
                   <button
-                    onClick={() => openWhatsApp(match.phone, match.name)}
+                    onClick={() => openWhatsApp(match.phone, match.name, match)}
                     className="flex-1 btn-success py-3 flex items-center justify-center gap-2"
                   >
                     <MessageCircle className="w-4 h-4" />
@@ -738,6 +876,31 @@ function AttendeeMatches() {
         onClose={() => setGamificationModalOpen(false)}
         isOpen={gamificationModalOpen}
       />
+
+      {/* Challenges Panel */}
+      <ChallengesPanel
+        attendeeId={attendee?.id}
+        eventId={eventId}
+        isOpen={challengesPanelOpen}
+        onClose={() => setChallengesPanelOpen(false)}
+      />
+
+      {/* Leaderboard */}
+      <Leaderboard
+        eventId={eventId}
+        currentUserId={attendee?.id}
+        isOpen={leaderboardOpen}
+        onClose={() => setLeaderboardOpen(false)}
+      />
+
+      {/* Challenge Completed Toast */}
+      {completedChallenge && (
+        <ChallengeCompletedToast
+          challenge={completedChallenge.challenge}
+          points={completedChallenge.points}
+          onClose={() => setCompletedChallenge(null)}
+        />
+      )}
     </div>
   );
 }

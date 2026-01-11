@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import {
   ArrowRight, Users, Sparkles, CheckCircle, Clock,
   Plus, Trash2, Edit2, Download, Send, ExternalLink, RefreshCw,
-  FileSpreadsheet, Globe, Eye, BarChart3, X
+  FileSpreadsheet, Globe, Eye, BarChart3, Trophy, X
 } from 'lucide-react';
 import axios from 'axios';
 import { useToast } from '../contexts/ToastContext';
@@ -191,6 +191,13 @@ function EventManager() {
               </div>
             </div>
             <div className="flex items-center gap-3">
+              <Link
+                to={`/admin/event/${eventId}/challenges`}
+                className="btn-secondary flex items-center gap-2"
+              >
+                <Trophy className="w-4 h-4" />
+                التحديات
+              </Link>
               <Link
                 to={`/admin/event/${eventId}/analytics`}
                 className="btn-secondary flex items-center gap-2"
