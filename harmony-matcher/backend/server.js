@@ -953,6 +953,23 @@ app.get('/api/attendees/:attendeeId/challenges', (req, res) => {
   }
 });
 
+// Initialize attendee's challenges for this event (creates progress/points rows)
+app.post('/api/attendees/:attendeeId/challenges/initialize', (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (!token) {
+      return res.status(401).json({ error: 'غير مصرح' });
+    }
+
+    const decoded = verifyToken(token);
+    initializeAttendeeProgress(req.params.attendeeId, decoded.eventId);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Initialize attendee challenges error:', error);
+    res.status(500).json({ error: 'فشل في تهيئة التحديات' });
+  }
+});
+
 // Update attendee's challenge progress
 app.post('/api/attendees/:attendeeId/challenges/:challengeKey/progress', (req, res) => {
   try {
