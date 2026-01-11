@@ -12,6 +12,7 @@ import AdminDashboard from './pages/AdminDashboard';
 import EventManager from './pages/EventManager';
 import AdminAttendeeMatches from './pages/AdminAttendeeMatches';
 import EventAnalytics from './pages/EventAnalytics';
+import EventChallenges from './pages/EventChallenges';
 import AttendeeLogin from './pages/AttendeeLogin';
 import AttendeeMatches from './pages/AttendeeMatches';
 
@@ -35,6 +36,7 @@ function App() {
                     <Route path="/admin" element={<AdminDashboard />} />
                     <Route path="/admin/event/:eventId" element={<EventManager />} />
                     <Route path="/admin/event/:eventId/analytics" element={<EventAnalytics />} />
+                    <Route path="/admin/event/:eventId/challenges" element={<EventChallenges />} />
                     <Route path="/admin/event/:eventId/attendee/:attendeeId" element={<AdminAttendeeMatches />} />
 
                     {/* Attendee Routes */}
