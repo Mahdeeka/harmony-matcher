@@ -1,3 +1,9 @@
 .env 
 node_modules 
 *.db 
+
+# Frontend build output (Vite)
+frontend/dist/
+
+# Uploads
+uploads/

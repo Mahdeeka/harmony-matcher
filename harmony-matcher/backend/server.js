@@ -1071,13 +1071,32 @@ app.post('/api/attendees/:attendeeId/challenges/initialize', (req, res) => {
   }
 });
 
+// ============================================
+// FRONTEND STATIC (local deploy)
+// ============================================
+// If the frontend has been built (Vite -> dist), serve it from the backend so you can run everything locally
+// from a single URL (e.g. http://localhost:3001).
+const frontendDistPath = path.join(__dirname, '../frontend/dist');
+if (fs.existsSync(frontendDistPath)) {
+  app.use(express.static(frontendDistPath));
+
+  // SPA fallback: serve index.html for non-API routes
+  app.get(/^(?!\/api(?:\/|$)|\/uploads(?:\/|$)|\/socket\.io(?:\/|$)).*/, (req, res) => {
+    res.sendFile(path.join(frontendDistPath, 'index.html'));
+  });
+
+  console.log(`🖥️ Serving frontend from ${frontendDistPath}`);
+} else {
+  console.log('ℹ️ Frontend dist not found. Build it with: cd frontend && npm install && npm run build');
+}
+
 // Start server
 async function startServer() {
   try {
     await initDatabase();
     server.listen(PORT, () => {
       console.log(`🚀 Server running on http://localhost:${PORT}`);
-      console.log(`📊 Admin Dashboard: http://localhost:3000/admin`);
+      console.log(`📊 Admin Dashboard: http://localhost:${PORT}/admin`);
       console.log(`💬 WebSocket server ready`);
     });
   } catch (error) {
