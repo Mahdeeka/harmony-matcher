@@ -1,9 +1,8 @@
 import React from 'react';
-import { Routes, Route, BrowserRouter } from 'react-router-dom';
+import { Routes, Route } from 'react-router-dom';
 import { LanguageProvider } from './contexts/LanguageContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { ToastProvider } from './contexts/ToastContext';
-import { SocketProvider } from './contexts/SocketContext';
 import { MessagingProvider } from './contexts/MessagingContext';
 
 // Import original pages
@@ -14,6 +13,7 @@ import AdminAttendeeMatches from './pages/AdminAttendeeMatches';
 import EventAnalytics from './pages/EventAnalytics';
 import AttendeeLogin from './pages/AttendeeLogin';
 import AttendeeMatches from './pages/AttendeeMatches';
+import NotFound from './pages/NotFound';
 
 // Import global components
 import PWAInstallPrompt from './components/PWAInstallPrompt';
@@ -24,29 +24,28 @@ function App() {
       <ThemeProvider>
         <ToastProvider>
           <MessagingProvider>
-            <SocketProvider>
-              <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-300">
-                <BrowserRouter>
-                  <Routes>
-                    {/* Home / Landing */}
-                    <Route path="/" element={<Home />} />
+            <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-300">
+              <Routes>
+                {/* Home / Landing */}
+                <Route path="/" element={<Home />} />
 
-                    {/* Admin Routes */}
-                    <Route path="/admin" element={<AdminDashboard />} />
-                    <Route path="/admin/event/:eventId" element={<EventManager />} />
-                    <Route path="/admin/event/:eventId/analytics" element={<EventAnalytics />} />
-                    <Route path="/admin/event/:eventId/attendee/:attendeeId" element={<AdminAttendeeMatches />} />
+                {/* Admin Routes */}
+                <Route path="/admin" element={<AdminDashboard />} />
+                <Route path="/admin/event/:eventId" element={<EventManager />} />
+                <Route path="/admin/event/:eventId/analytics" element={<EventAnalytics />} />
+                <Route path="/admin/event/:eventId/attendee/:attendeeId" element={<AdminAttendeeMatches />} />
 
-                    {/* Attendee Routes */}
-                    <Route path="/event/:eventId" element={<AttendeeLogin />} />
-                    <Route path="/event/:eventId/matches" element={<AttendeeMatches />} />
-                  </Routes>
-                </BrowserRouter>
+                {/* Attendee Routes */}
+                <Route path="/event/:eventId" element={<AttendeeLogin />} />
+                <Route path="/event/:eventId/matches" element={<AttendeeMatches />} />
 
-                {/* Global Components */}
-                <PWAInstallPrompt />
-              </div>
-            </SocketProvider>
+                {/* Fallback */}
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+
+              {/* Global Components */}
+              <PWAInstallPrompt />
+            </div>
           </MessagingProvider>
         </ToastProvider>
       </ThemeProvider>

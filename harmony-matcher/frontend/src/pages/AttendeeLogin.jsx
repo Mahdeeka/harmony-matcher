@@ -177,6 +177,11 @@ function AttendeeLogin() {
       // Store authentication data
       localStorage.setItem(`harmony_token_${eventId}`, response.data.token);
       localStorage.setItem(`harmony_attendee_${eventId}`, JSON.stringify(response.data.attendee));
+      // Also publish a "current" token for messaging + notify the app to connect websockets
+      try {
+        localStorage.setItem('harmony_token_current', response.data.token);
+        window.dispatchEvent(new CustomEvent('harmony_auth_changed', { detail: { token: response.data.token, eventId } }));
+      } catch {}
 
       if (rememberDevice) {
         localStorage.setItem(`harmony_device_${eventId}`, 'remembered');

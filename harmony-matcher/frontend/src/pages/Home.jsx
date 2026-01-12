@@ -1,33 +1,18 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { ArrowLeft, ChevronDown, Shield, Sparkles, Star, TrendingUp, Users } from 'lucide-react';
+import LanguageSelector from '../components/LanguageSelector';
+import ThemeToggle from '../components/ThemeToggle';
 
 function Home() {
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-600 to-purple-800 flex items-center justify-center">
-      <div className="bg-white p-8 rounded-lg shadow-lg text-center max-w-md">
-        <h1 className="text-3xl font-bold text-gray-800 mb-4">
-          Harmony Matcher 🏠
-        </h1>
-        <p className="text-gray-600 mb-6">
-          Welcome to the Harmony networking platform! This is a simplified version to test if the page loads.
-        </p>
-        <div className="space-y-3">
-          <Link
-            to="/admin"
-            className="block bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            Admin Dashboard
-          </Link>
-          <button
-            onClick={() => alert('Harmony Matcher is working! 🎉')}
-            className="w-full bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors"
-          >
-            Test Button
-          </button>
-        </div>
-      </div>
-    </div>
+  const [isVisible, setIsVisible] = useState(false);
 
+  useEffect(() => {
+    setIsVisible(true);
+  }, []);
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-harmony-600 to-harmony-800">
       {/* Header */}
       <header className="relative container mx-auto px-4 py-6 safe-area-top">
         <div className={`flex items-center justify-between transition-all duration-700 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4'}`}>
@@ -90,7 +75,10 @@ function Home() {
               <ArrowLeft className="w-5 h-5" />
             </Link>
 
-            <button className="bg-transparent border-2 border-white/30 hover:border-white/50 text-white font-medium py-4 px-8 rounded-xl transition-all duration-200 backdrop-blur-sm hover:bg-white/10 active:bg-white/20 flex items-center justify-center gap-2 btn-touch">
+            <button
+              type="button"
+              className="bg-transparent border-2 border-white/30 hover:border-white/50 text-white font-medium py-4 px-8 rounded-xl transition-all duration-200 backdrop-blur-sm hover:bg-white/10 active:bg-white/20 flex items-center justify-center gap-2 btn-touch"
+            >
               <Users className="w-5 h-5" />
               مشاهدة العرض التوضيحي
             </button>

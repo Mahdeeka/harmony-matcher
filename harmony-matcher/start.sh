@@ -5,15 +5,15 @@ echo ""
 
 # Start backend
 echo "📦 Starting Backend (Port 3001)..."
-cd backend
-node server.js &
+cd backend_fastapi
+uvicorn app.main:app --host 0.0.0.0 --port 3001 &
 BACKEND_PID=$!
 
 # Wait for backend to start
 sleep 2
 
 # Start frontend
-echo "🎨 Starting Frontend (Port 3000)..."
+echo "🎨 Starting Frontend (Port 4000)..."
 cd ../frontend
 npm run dev &
 FRONTEND_PID=$!
@@ -21,7 +21,7 @@ FRONTEND_PID=$!
 echo ""
 echo "✅ Harmony Matcher is running!"
 echo ""
-echo "📊 Admin Dashboard: http://localhost:3000/admin"
+echo "📊 Admin Dashboard: http://localhost:4000/admin"
 echo "🔌 API Health:      http://localhost:3001/api/health"
 echo ""
 echo "Press Ctrl+C to stop both servers"

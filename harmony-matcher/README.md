@@ -13,7 +13,8 @@
 
 ## المتطلبات 📋
 
-- Node.js 18+
+- Python 3.11+ (للـ Backend)
+- Node.js 18+ (للـ Frontend)
 - npm أو yarn
 
 ## التثبيت 🚀
@@ -21,9 +22,9 @@
 ### 1. تثبيت المكتبات
 
 ```bash
-# Backend
-cd harmony-matcher/backend
-npm install
+# Backend (FastAPI)
+cd harmony-matcher/backend_fastapi
+pip install -r requirements.txt
 
 # Frontend
 cd ../frontend
@@ -32,27 +33,28 @@ npm install
 
 ### 2. إعداد ملف البيئة
 
-الملف `.env` في مجلد `backend` جاهز بالفعل مع:
-- Claude API Key
-- Twilio Credentials
-- رقم Twilio للـ SMS
+انسخ `backend_fastapi/env.example` واضبط القيم (أو اضبطها كـ Environment Variables):
+- `ANTHROPIC_API_KEY`
+- `TWILIO_*`
+- `JWT_SECRET`
+- `HARMONY_API_URL`
 
 ### 3. تشغيل النظام
 
 ```bash
 # Terminal 1 - Backend (Port 3001)
-cd backend
-npm run dev
+cd backend_fastapi
+uvicorn app.main:app --reload --host 0.0.0.0 --port 3001
 
-# Terminal 2 - Frontend (Port 3000)
+# Terminal 2 - Frontend (Port 4000)
 cd frontend
 npm run dev
 ```
 
 ### 4. فتح النظام
 
-- **لوحة التحكم**: http://localhost:3000/admin
-- **صفحة المشارك**: http://localhost:3000/event/{eventId}
+- **لوحة التحكم**: http://localhost:4000/admin
+- **صفحة المشارك**: http://localhost:4000/event/{eventId}
 
 ## كيفية الاستخدام 📖
 
@@ -119,7 +121,7 @@ npm run dev
 
 ## التكنولوجيا المستخدمة 🛠️
 
-- **Backend**: Node.js, Express, SQLite
+- **Backend**: FastAPI, SQLite
 - **Frontend**: React, Vite, Tailwind CSS
 - **AI**: Claude API (Anthropic)
 - **SMS**: Twilio

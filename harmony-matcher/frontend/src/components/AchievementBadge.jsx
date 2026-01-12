@@ -1,7 +1,7 @@
 import React from 'react';
 import {
   Trophy, Users, MessageSquare, Star, Target,
-  Award, Zap, Heart, Handshake, Crown
+  Award, Zap, Heart, HeartHandshake, Crown
 } from 'lucide-react';
 
 const AchievementBadge = ({
@@ -15,7 +15,7 @@ const AchievementBadge = ({
   const getBadgeIcon = () => {
     switch (type) {
       case 'first-match':
-        return <Handshake className="w-6 h-6" />;
+        return <HeartHandshake className="w-6 h-6" />;
       case 'social-butterfly':
         return <Users className="w-6 h-6" />;
       case 'conversation-starter':
