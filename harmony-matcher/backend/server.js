@@ -41,13 +41,43 @@ const {
 // Initialize Express app
 const app = express();
 const server = createServer(app);
+const PORT = process.env.PORT || 3001;
+
+// Socket.IO CORS:
+// - Dev mode often runs Vite on :4000 and backend on :3001
+// - Local "single URL" deploy serves the frontend from :3001 (same as backend)
+// Allow both, plus any explicitly configured origins.
+const allowedSocketOrigins = new Set([
+  'http://localhost:4000',
+  `http://localhost:${PORT}`
+]);
+if (process.env.CORS_ORIGINS) {
+  for (const origin of process.env.CORS_ORIGINS.split(',')) {
+    const trimmed = origin.trim();
+    if (trimmed) allowedSocketOrigins.add(trimmed);
+  }
+}
+
 const io = new Server(server, {
   cors: {
-    origin: process.env.NODE_ENV === 'production' ? false : "http://localhost:4000",
+    origin: (origin, cb) => {
+      // Allow non-browser clients / same-origin cases where Origin isn't sent
+      if (!origin) return cb(null, true);
+      if (allowedSocketOrigins.has(origin)) return cb(null, true);
+
+      // Convenience: allow ngrok dev hosts if you expose localhost
+      try {
+        const u = new URL(origin);
+        if (u.hostname.endsWith('.ngrok-free.dev')) return cb(null, true);
+      } catch (_) {
+        // ignore
+      }
+
+      return cb(new Error(`Socket origin not allowed: ${origin}`), false);
+    },
     methods: ["GET", "POST"]
   }
 });
-const PORT = process.env.PORT || 3001;
 
 // Socket.IO connection handling
 const connectedUsers = new Map();
