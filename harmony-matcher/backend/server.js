@@ -12,7 +12,6 @@ const { initDatabase, getDb } = require('./database');
 const { sendOTP, verifyOTP } = require('./services/sms');
 const { generateMatches, generateMoreMatches, cancelMatching, getMatchingStatus } = require('./services/matching');
 const matchingQueue = require('./services/matchingQueue');
-const { importFromHarmonyAPI } = require('./services/harmony');
 const { parseExcel } = require('./services/excel');
 const { generateToken, verifyToken } = require('./services/auth');
 const {
@@ -492,27 +491,6 @@ app.post('/api/events/:eventId/upload', upload.single('file'), async (req, res) 
   } catch (error) {
     console.error('Upload error:', error);
     res.status(500).json({ error: 'فشل في استيراد الملف: ' + error.message });
-  }
-});
-
-app.post('/api/events/:eventId/import-harmony', async (req, res) => {
-  try {
-    const result = await importFromHarmonyAPI(req.params.eventId, req.body.selectedIds);
-    res.json({ success: true, message: `تم استيراد ${result.count} عضو من Harmony`, count: result.count });
-  } catch (error) {
-    console.error('Harmony import error:', error);
-    res.status(500).json({ error: 'فشل في الاستيراد من Harmony' });
-  }
-});
-
-app.get('/api/harmony/members', async (req, res) => {
-  try {
-    const response = await fetch(process.env.HARMONY_API_URL);
-    const data = await response.json();
-    res.json({ members: data.items, total: data.total });
-  } catch (error) {
-    console.error('Harmony fetch error:', error);
-    res.status(500).json({ error: 'فشل في جلب أعضاء Harmony' });
   }
 });
 

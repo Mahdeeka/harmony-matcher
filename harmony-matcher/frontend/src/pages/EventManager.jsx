@@ -19,9 +19,6 @@ function EventManager() {
   const [uploading, setUploading] = useState(false);
   const [matchingStatus, setMatchingStatus] = useState({ status: 'pending', processed: 0, total: 0 });
   const [showAddModal, setShowAddModal] = useState(false);
-  const [showHarmonyModal, setShowHarmonyModal] = useState(false);
-  const [harmonyMembers, setHarmonyMembers] = useState([]);
-  const [selectedHarmonyMembers, setSelectedHarmonyMembers] = useState([]);
   const [newAttendee, setNewAttendee] = useState({
     name: '', phone: '', email: '', title: '', company: '',
     professional_bio: '', skills: '', looking_for: '', offering: ''
@@ -134,29 +131,6 @@ function EventManager() {
       showSuccess('تم حذف المشارك بنجاح');
     } catch (error) {
       showError('فشل في حذف المشارك');
-    }
-  };
-
-  const fetchHarmonyMembers = async () => {
-    try {
-      const response = await axios.get('/api/harmony/members');
-      setHarmonyMembers(response.data.members);
-      setShowHarmonyModal(true);
-    } catch (error) {
-      showError('فشل في جلب أعضاء Harmony');
-    }
-  };
-
-  const importFromHarmony = async () => {
-    try {
-      const response = await axios.post(`/api/events/${eventId}/import-harmony`, {
-        selectedIds: selectedHarmonyMembers
-      });
-      showSuccess(response.data.message);
-      setShowHarmonyModal(false);
-      fetchAttendees();
-    } catch (error) {
-      showError('فشل في الاستيراد');
     }
   };
 
@@ -314,11 +288,6 @@ function EventManager() {
             />
 
             <div className="flex flex-wrap gap-3 mt-4 pt-4 border-t border-gray-100">
-              <button onClick={fetchHarmonyMembers} className="btn-secondary">
-                <Globe className="w-5 h-5" />
-                استيراد من Harmony
-              </button>
-
               <button onClick={() => setShowAddModal(true)} className="btn-secondary">
                 <Plus className="w-5 h-5" />
                 إضافة مشارك يدوياً
@@ -328,13 +297,6 @@ function EventManager() {
 
           {/* Quick Actions */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="card p-4 text-center hover:shadow-md transition-shadow cursor-pointer"
-                 onClick={fetchHarmonyMembers}>
-              <Globe className="w-8 h-8 text-green-600 mx-auto mb-2" />
-              <div className="font-medium text-gray-900">من Harmony</div>
-              <div className="text-sm text-gray-500">639+ عضو جاهز</div>
-            </div>
-
             <div className="card p-4 text-center hover:shadow-md transition-shadow cursor-pointer"
                  onClick={() => setShowAddModal(true)}>
               <Plus className="w-8 h-8 text-purple-600 mx-auto mb-2" />
@@ -436,7 +398,7 @@ function EventManager() {
                 <Users className="w-16 h-16 text-gray-300 mx-auto mb-4" />
                 <h3 className="text-lg font-medium text-gray-700 mb-2">لا يوجد مشاركين</h3>
                 <p className="text-gray-500 mb-6 max-w-md mx-auto">
-                  ابدأ بإضافة المشاركين للفعالية. يمكنك رفع ملف Excel أو استيراد من Harmony أو إضافة المشاركين يدوياً.
+                  ابدأ بإضافة المشاركين للفعالية. يمكنك رفع ملف Excel أو إضافة المشاركين يدوياً.
                 </p>
                 <div className="flex flex-wrap justify-center gap-3">
                   <button
@@ -593,67 +555,6 @@ function EventManager() {
         </div>
       )}
 
-      {/* Harmony Import Modal */}
-      {showHarmonyModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 fade-in max-h-[80vh] flex flex-col">
-            <h3 className="text-xl font-bold text-gray-900 mb-4">
-              استيراد من Harmony ({harmonyMembers.length} عضو)
-            </h3>
-            <p className="text-gray-500 text-sm mb-4">
-              ✅ الـ API يوفر جميع بيانات الأعضاء الكاملة: الأسماء، الصور، أرقام الهواتف، البريد الإلكتروني، المسميات الوظيفية، الخبرات، المهارات، وروابط التواصل الاجتماعي.
-            </p>
-            <div className="flex-1 overflow-y-auto border rounded-xl p-2 mb-4">
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                {harmonyMembers.slice(0, 50).map((member, index) => (
-                  <label 
-                    key={index}
-                    className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-colors ${
-                      selectedHarmonyMembers.includes(index) ? 'bg-harmony-100' : 'hover:bg-gray-50'
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedHarmonyMembers.includes(index)}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setSelectedHarmonyMembers([...selectedHarmonyMembers, index]);
-                        } else {
-                          setSelectedHarmonyMembers(selectedHarmonyMembers.filter(i => i !== index));
-                        }
-                      }}
-                      className="rounded"
-                    />
-                    {member.thumbnail_url && (
-                      <img 
-                        src={member.thumbnail_url} 
-                        alt={member.title}
-                        className="w-8 h-8 rounded-full object-cover"
-                      />
-                    )}
-                    <span className="text-sm truncate">{member.title}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-            <div className="flex gap-3">
-              <button 
-                onClick={importFromHarmony}
-                className="btn-primary flex-1"
-                disabled={selectedHarmonyMembers.length === 0}
-              >
-                استيراد {selectedHarmonyMembers.length > 0 ? `(${selectedHarmonyMembers.length})` : ''}
-              </button>
-              <button 
-                onClick={() => setShowHarmonyModal(false)}
-                className="btn-secondary flex-1"
-              >
-                إلغاء
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
