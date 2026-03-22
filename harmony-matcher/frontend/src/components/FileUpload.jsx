@@ -154,6 +154,7 @@ const FileUpload = ({ onFileUpload, accept = ".xlsx,.xls,.csv", multiple = false
           onChange={handleFileSelect}
           className="hidden"
           disabled={uploading}
+          data-upload-trigger
         />
 
         {uploading ? (
