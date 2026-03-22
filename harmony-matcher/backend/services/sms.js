@@ -2,7 +2,9 @@ const twilio = require('twilio');
 const { getDb } = require('../database');
 const { v4: uuidv4 } = require('uuid');
 
-const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+const client = process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN
+  ? twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
+  : null;
 
 function generateOTPCode() {
   return Math.floor(1000 + Math.random() * 9000).toString();
@@ -24,6 +26,11 @@ async function sendOTP(phone) {
   
   db.prepare(`INSERT INTO otp_codes (id, phone, code, expires_at) VALUES (?, ?, ?, ?)`).run(uuidv4(), formattedPhone, code, expiresAt);
   
+  if (!client) {
+    console.log(`📱 DEV MODE (Twilio not configured) - OTP for ${formattedPhone}: ${code}`);
+    return { success: true, devCode: code };
+  }
+
   try {
     await client.messages.create({
       body: `رمز التحقق الخاص بك في Harmony Matcher: ${code}\nصالح لمدة 10 دقائق`,

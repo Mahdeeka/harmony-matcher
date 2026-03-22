@@ -350,13 +350,14 @@ html {
 
 /* Modal improvements */
 .modal-backdrop {
-  @apply fixed inset-0 bg-black/50 backdrop-blur-sm z-40;
+  @apply fixed inset-0 bg-black/50 backdrop-blur-sm z-40 flex items-center justify-center p-4 overflow-y-auto;
   animation: fadeIn 0.2s ease-out;
 }
 
 .modal-content {
-  @apply bg-white rounded-3xl shadow-xl max-w-md w-full mx-4;
+  @apply bg-white dark:bg-gray-800 dark:border dark:border-gray-700 rounded-3xl shadow-xl max-w-md w-full p-6 my-auto;
   animation: scale-in 0.2s ease-out;
+  overflow: hidden;
 }
 
 /* Mobile modal adjustments */
