@@ -137,7 +137,7 @@ function EventManager() {
   const copyEventLink = () => {
     const link = `${window.location.origin}/event/${eventId}`;
     navigator.clipboard.writeText(link);
-    alert('تم نسخ الرابط');
+    showSuccess('تم نسخ رابط المشاركين');
   };
 
   if (loading) {
@@ -152,20 +152,20 @@ function EventManager() {
   const isProcessing = matchingStatus.status === 'processing' || matchingStatus.status === 'running';
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200">
+      <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <Link to="/admin" className="text-gray-400 hover:text-gray-600">
+              <Link to="/admin" className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
                 <ArrowRight className="w-6 h-6" />
               </Link>
               <div>
-                <h1 className="text-xl font-bold text-gray-900">
+                <h1 className="text-xl font-bold text-gray-900 dark:text-white">
                   {event?.name_ar || event?.name}
                 </h1>
-                <p className="text-gray-500 text-sm">إدارة الفعالية</p>
+                <p className="text-gray-500 dark:text-gray-400 text-sm">إدارة الفعالية</p>
               </div>
             </div>
             <div className="flex items-center gap-3">
@@ -287,21 +287,15 @@ function EventManager() {
               accept=".xlsx,.xls,.csv"
             />
 
-            <div className="flex flex-wrap gap-3 mt-4 pt-4 border-t border-gray-100">
+            <div className="flex flex-wrap gap-3 mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
+              <button onClick={fetchHarmonyMembers} className="btn-secondary">
+                <Globe className="w-5 h-5" />
+                استيراد من Harmony
+              </button>
               <button onClick={() => setShowAddModal(true)} className="btn-secondary">
                 <Plus className="w-5 h-5" />
                 إضافة مشارك يدوياً
               </button>
-            </div>
-          </div>
-
-          {/* Quick Actions */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="card p-4 text-center hover:shadow-md transition-shadow cursor-pointer"
-                 onClick={() => setShowAddModal(true)}>
-              <Plus className="w-8 h-8 text-purple-600 mx-auto mb-2" />
-              <div className="font-medium text-gray-900">إضافة يدوية</div>
-              <div className="text-sm text-gray-500">مشارك واحد</div>
             </div>
           </div>
         </div>
@@ -395,24 +389,11 @@ function EventManager() {
 
             {!loading && attendees.length === 0 && (
               <div className="text-center py-16">
-                <Users className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-700 mb-2">لا يوجد مشاركين</h3>
-                <p className="text-gray-500 mb-6 max-w-md mx-auto">
-                  ابدأ بإضافة المشاركين للفعالية. يمكنك رفع ملف Excel أو إضافة المشاركين يدوياً.
+                <Users className="w-16 h-16 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-700 dark:text-gray-300 mb-2">لا يوجد مشاركين</h3>
+                <p className="text-gray-500 dark:text-gray-400 mb-0 max-w-md mx-auto">
+                  ابدأ بإضافة المشاركين للفعالية من القسم أعلاه.
                 </p>
-                <div className="flex flex-wrap justify-center gap-3">
-                  <button
-                    onClick={() => document.querySelector('[data-upload-trigger]')?.click()}
-                    className="btn-primary"
-                  >
-                    <FileSpreadsheet className="w-5 h-5" />
-                    رفع ملف Excel
-                  </button>
-                  <button onClick={fetchHarmonyMembers} className="btn-secondary">
-                    <Globe className="w-5 h-5" />
-                    من Harmony
-                  </button>
-                </div>
               </div>
             )}
           </div>
