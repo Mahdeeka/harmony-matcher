@@ -337,6 +337,113 @@ function initializeAttendeeProgress(attendeeId, eventId) {
 }
 
 /**
+ * Create a new challenge (activity)
+ */
+function createChallenge(data) {
+  const db = getDb();
+  const id = uuidv4();
+  const keyRaw = data.key || data.name_en?.toLowerCase?.()?.replace(/\s+/g, '_')?.replace(/[^a-z0-9_]/g, '') || `custom_${id.slice(0, 8)}`;
+  const key = String(keyRaw).slice(0, 50);
+  const existing = db.prepare(`SELECT key FROM challenges WHERE key = ?`).get(key);
+  const uniqueKey = existing ? `${key}_${id.slice(0, 6)}` : key;
+
+  const values = [
+    id,
+    uniqueKey,
+    String(data.name_ar || ''),
+    String(data.name_en || ''),
+    String(data.description_ar || ''),
+    String(data.description_en || ''),
+    String(data.icon || 'Target'),
+    String(data.category || 'other'),
+    String(data.trigger_type || 'manual'),
+    parseInt(data.trigger_value, 10) || 1,
+    parseInt(data.default_points, 10) || 10,
+    String(data.badge_color || 'blue'),
+    data.image_url && String(data.image_url).trim() ? String(data.image_url).trim() : null
+  ];
+
+  try {
+    db.prepare(`
+      INSERT INTO challenges (id, key, name_ar, name_en, description_ar, description_en, icon, category, trigger_type, trigger_value, default_points, badge_color, image_url)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(...values);
+  } catch (err) {
+    const msg = (err?.message || '').toLowerCase();
+    if (msg.includes('image_url') && (msg.includes('no such column') || msg.includes('no column'))) {
+      values.pop();
+      db.prepare(`
+        INSERT INTO challenges (id, key, name_ar, name_en, description_ar, description_en, icon, category, trigger_type, trigger_value, default_points, badge_color)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(...values);
+    } else {
+      throw err;
+    }
+  }
+
+  return db.prepare(`SELECT * FROM challenges WHERE id = ?`).get(id);
+}
+
+/**
+ * Update an existing challenge
+ */
+function updateChallenge(id, data) {
+  const db = getDb();
+  const allowed = ['name_ar', 'name_en', 'description_ar', 'description_en', 'icon', 'category', 'trigger_type', 'trigger_value', 'default_points', 'badge_color', 'image_url'];
+
+  const buildFieldsAndValues = (includeImage = true) => {
+    const fields = [];
+    const values = [];
+    const toProcess = includeImage ? allowed : allowed.filter(f => f !== 'image_url');
+    for (const field of toProcess) {
+      if (data[field] !== undefined) {
+        fields.push(`${field} = ?`);
+        let val = data[field];
+        if (field === 'trigger_value' || field === 'default_points') {
+          val = parseInt(val, 10);
+          if (Number.isNaN(val)) val = field === 'default_points' ? 10 : 1;
+        }
+        if (field === 'image_url' && val === '') val = null;
+        values.push(val);
+      }
+    }
+    return { fields, values };
+  };
+
+  const { fields, values } = buildFieldsAndValues(true);
+  if (fields.length === 0) return db.prepare(`SELECT * FROM challenges WHERE id = ?`).get(id);
+
+  const allValues = [...values, id];
+  const sql = `UPDATE challenges SET ${fields.join(', ')} WHERE id = ?`;
+
+  try {
+    db.prepare(sql).run(...allValues);
+  } catch (err) {
+    const msg = (err?.message || '').toLowerCase();
+    if (msg.includes('image_url') && (msg.includes('no such column') || msg.includes('no column'))) {
+      const { fields: f2, values: v2 } = buildFieldsAndValues(false);
+      if (f2.length > 0) {
+        db.prepare(`UPDATE challenges SET ${f2.join(', ')} WHERE id = ?`).run(...v2, id);
+      }
+    } else {
+      throw err;
+    }
+  }
+  return db.prepare(`SELECT * FROM challenges WHERE id = ?`).get(id);
+}
+
+/**
+ * Delete a challenge
+ */
+function deleteChallenge(id) {
+  const db = getDb();
+  db.prepare(`DELETE FROM event_challenges WHERE challenge_id = ?`).run(id);
+  db.prepare(`DELETE FROM attendee_challenges WHERE challenge_id = ?`).run(id);
+  db.prepare(`DELETE FROM challenges WHERE id = ?`).run(id);
+  return { success: true };
+}
+
+/**
  * Quick enable all challenges with defaults for an event
  */
 function enableAllChallengesForEvent(eventId) {
@@ -373,5 +480,8 @@ module.exports = {
   getAttendeeRank,
   getAttendeeCompletedChallenges,
   initializeAttendeeProgress,
-  enableAllChallengesForEvent
+  enableAllChallengesForEvent,
+  createChallenge,
+  updateChallenge,
+  deleteChallenge
 };

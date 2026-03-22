@@ -38,7 +38,8 @@ const categoryLabels = {
   quality: { ar: 'تحديات الجودة', en: 'Quality Challenges', icon: Star },
   discovery: { ar: 'تحديات الاستكشاف', en: 'Discovery Challenges', icon: Eye },
   match_type: { ar: 'تحديات نوع التطابق', en: 'Match Type Challenges', icon: Target },
-  engagement: { ar: 'تحديات التفاعل', en: 'Engagement Challenges', icon: Zap }
+  engagement: { ar: 'تحديات التفاعل', en: 'Engagement Challenges', icon: Zap },
+  other: { ar: 'أخرى', en: 'Other', icon: Target }
 };
 
 function EventChallenges() {

@@ -17,26 +17,14 @@ class DatabaseWrapper {
     return {
       run: (...params) => {
         try {
-          console.log('Executing SQL:', sql, 'with params:', params);
-          const result = self.database.run(sql, params);
-          console.log('SQL execution result:', result);
-        self.save();
-
-          // For INSERT/UPDATE/DELETE, sql.js doesn't have getRowsModified
-          // We need to check if the operation was successful
-          // For INSERT, we can check if the result has insertId or changes
-          let changes = 0;
-          if (result.insertId !== undefined) {
-            changes = 1; // INSERT operation successful
-          } else if (sql.toUpperCase().includes('UPDATE') || sql.toUpperCase().includes('DELETE')) {
-            // For UPDATE/DELETE, we could try to count affected rows differently
-            changes = 1; // Assume successful for now
-          }
-
-          console.log('Changes detected:', changes);
-          return { changes };
+          const stmt = self.database.prepare(sql);
+          stmt.bind(params);
+          stmt.step();
+          stmt.free();
+          self.save();
+          return { changes: 1 };
         } catch (error) {
-          console.error('Database run error:', error);
+          console.error('Database run error:', sql, params, error);
           throw error;
         }
       },
@@ -115,6 +103,7 @@ async function initDatabase() {
       description TEXT,
       date TEXT,
       location TEXT,
+      street TEXT,
       created_by TEXT,
       matching_status TEXT DEFAULT 'pending',
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -386,6 +375,10 @@ async function initDatabase() {
 
   // attendee_stats table migrations (for existing DBs)
   try { db.exec(`CREATE TABLE IF NOT EXISTS attendee_stats (attendee_id TEXT NOT NULL, event_id TEXT NOT NULL, first_login_at TEXT, last_login_at TEXT, profile_views INTEGER DEFAULT 0, saved_matches INTEGER DEFAULT 0, hidden_matches INTEGER DEFAULT 0, created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (attendee_id, event_id))`); } catch (e) {}
+
+  try { db.exec(`ALTER TABLE events ADD COLUMN street TEXT`); } catch (e) {}
+
+  try { db.exec(`ALTER TABLE challenges ADD COLUMN image_url TEXT`); } catch (e) {}
 
   console.log('✅ Database initialized successfully');
   return db;

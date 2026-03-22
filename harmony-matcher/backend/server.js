@@ -34,7 +34,10 @@ const {
   getAttendeeRank,
   getAttendeeCompletedChallenges,
   initializeAttendeeProgress,
-  enableAllChallengesForEvent
+  enableAllChallengesForEvent,
+  createChallenge,
+  updateChallenge,
+  deleteChallenge
 } = require('./services/challenges');
 
 // Initialize Express app
@@ -385,7 +388,7 @@ app.post('/api/events', (req, res) => {
   try {
     console.log('Received event creation request:', req.body);
     const db = getDb();
-    const { name, name_ar, description = '', date, location } = req.body;
+    const { name, name_ar, description = '', date, location, street } = req.body;
     console.log('Extracted values:', { name, name_ar, description, date, location });
 
     // Validate required fields
@@ -401,8 +404,8 @@ app.post('/api/events', (req, res) => {
     try {
       // Try using sql.js directly
       const dbInstance = getDb();
-      const stmt = dbInstance.database.prepare(`INSERT INTO events (id, name, name_ar, description, date, location) VALUES (?, ?, ?, ?, ?, ?)`);
-      stmt.bind([id, name, name_ar, description, date, location]);
+      const stmt = dbInstance.database.prepare(`INSERT INTO events (id, name, name_ar, description, date, location, street) VALUES (?, ?, ?, ?, ?, ?, ?)`);
+      stmt.bind([id, name, name_ar, description, date, location, street || null]);
       const result = stmt.step();
       stmt.free();
       dbInstance.save();
@@ -431,7 +434,7 @@ app.post('/api/events', (req, res) => {
     }
 
     console.log('Event created successfully');
-    res.json({ success: true, event: { id, name, name_ar, description, date, location } });
+    res.json({ success: true, event: { id, name, name_ar, description, date, location, street } });
   } catch (error) {
     console.error('Create event error:', error);
     console.error('Error stack:', error.stack);
@@ -459,6 +462,30 @@ app.get('/api/events/:id', (req, res) => {
   } catch (error) {
     console.error('Get event error:', error);
     res.status(500).json({ error: 'فشل في جلب الحدث' });
+  }
+});
+
+app.patch('/api/events/:id', (req, res) => {
+  try {
+    const db = getDb();
+    const { name, name_ar, description, date, location, street } = req.body;
+    const updates = [];
+    const values = [];
+    if (name != null) { updates.push('name = ?'); values.push(name); }
+    if (name_ar != null) { updates.push('name_ar = ?'); values.push(name_ar); }
+    if (description != null) { updates.push('description = ?'); values.push(description); }
+    if (date != null) { updates.push('date = ?'); values.push(date); }
+    if (location != null) { updates.push('location = ?'); values.push(location); }
+    if (street !== undefined) { updates.push('street = ?'); values.push(street || null); }
+    if (updates.length === 0) return res.status(400).json({ error: 'لا توجد بيانات للتحديث' });
+    updates.push('updated_at = CURRENT_TIMESTAMP');
+    values.push(req.params.id);
+    db.prepare(`UPDATE events SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+    const event = db.prepare(`SELECT e.*, (SELECT COUNT(*) FROM attendees WHERE event_id = e.id) as attendee_count FROM events e WHERE e.id = ?`).get(req.params.id);
+    res.json({ success: true, event });
+  } catch (error) {
+    console.error('Update event error:', error);
+    res.status(500).json({ error: 'فشل في تحديث الحدث' });
   }
 });
 
@@ -891,6 +918,45 @@ app.get('/api/challenges', (req, res) => {
   } catch (error) {
     console.error('Get challenges error:', error);
     res.status(500).json({ error: 'فشل في جلب التحديات' });
+  }
+});
+
+// Create a new challenge (activity)
+app.post('/api/challenges', (req, res) => {
+  const body = req.body || {};
+  try {
+    const challenge = createChallenge(body);
+    res.status(201).json({ challenge });
+  } catch (error) {
+    const msg = error?.message || error?.toString?.() || 'unknown';
+    console.error('Create challenge error:', Object.keys(body), msg);
+    res.status(500).json({ error: 'فشل في إنشاء النشاط', details: msg });
+  }
+});
+
+// Update a challenge
+app.patch('/api/challenges/:id', (req, res) => {
+  const id = req.params.id;
+  const body = req.body || {};
+  try {
+    const challenge = updateChallenge(id, body);
+    if (!challenge) return res.status(404).json({ error: 'النشاط غير موجود' });
+    res.json({ challenge });
+  } catch (error) {
+    const msg = error?.message || error?.toString?.() || 'unknown';
+    console.error('Update challenge error:', id, Object.keys(body), msg);
+    res.status(500).json({ error: 'فشل في تحديث النشاط', details: msg });
+  }
+});
+
+// Delete a challenge
+app.delete('/api/challenges/:id', (req, res) => {
+  try {
+    deleteChallenge(req.params.id);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Delete challenge error:', error);
+    res.status(500).json({ error: 'فشل في حذف النشاط' });
   }
 });
 
