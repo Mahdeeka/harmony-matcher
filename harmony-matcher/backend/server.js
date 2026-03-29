@@ -10,9 +10,9 @@ const { Server } = require('socket.io');
 
 const { initDatabase, getDb } = require('./database');
 const { sendOTP, verifyOTP } = require('./services/sms');
-const { generateMatches, generateMoreMatches, cancelMatching, getMatchingStatus } = require('./services/matching');
+const { generateMatches, generateMoreMatches, cancelMatching, getMatchingStatus, ALL_METRICS, DEFAULT_METRICS } = require('./services/matching');
 const matchingQueue = require('./services/matchingQueue');
-const { parseExcel } = require('./services/excel');
+const { parseExcel, generateTemplate } = require('./services/excel');
 const { generateToken, verifyToken } = require('./services/auth');
 const {
   createOrGetConversation,
@@ -504,16 +504,29 @@ app.delete('/api/events/:id', (req, res) => {
 // ATTENDEE ROUTES
 // ============================================
 
+app.get('/api/template/attendees', (req, res) => {
+  try {
+    const buffer = generateTemplate();
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="harmony-matcher-template.xlsx"');
+    res.send(Buffer.from(buffer));
+  } catch (error) {
+    console.error('Template generation error:', error);
+    res.status(500).json({ error: 'فشل في إنشاء القالب' });
+  }
+});
+
 app.post('/api/events/:eventId/upload', upload.single('file'), async (req, res) => {
   try {
     const db = getDb();
     const { eventId } = req.params;
     const attendees = parseExcel(req.file.path, eventId);
-    
+
+    const n = (v) => v === undefined ? null : v;
     for (const a of attendees) {
-      db.prepare(`INSERT OR REPLACE INTO attendees (id, event_id, name, phone, email, title, company, industry, professional_bio, personal_bio, skills, looking_for, offering, linkedin_url, photo_url, location, languages) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(a.id, eventId, a.name, a.phone, a.email, a.title, a.company, a.industry, a.professional_bio, a.personal_bio, a.skills, a.looking_for, a.offering, a.linkedin_url, a.photo_url, a.location, a.languages);
+      db.prepare(`INSERT OR REPLACE INTO attendees (id, event_id, name, phone, email, title, company, industry, professional_bio, personal_bio, skills, looking_for, offering, linkedin_url, photo_url, location, languages, harmony_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(a.id, eventId, a.name, a.phone, n(a.email), n(a.title), n(a.company), n(a.industry), n(a.professional_bio), n(a.personal_bio), n(a.skills), n(a.looking_for), n(a.offering), n(a.linkedin_url), n(a.photo_url), n(a.location), n(a.languages), n(a.harmony_id));
     }
-    
+
     res.json({ success: true, message: `تم استيراد ${attendees.length} مشارك بنجاح`, count: attendees.length });
   } catch (error) {
     console.error('Upload error:', error);
@@ -683,27 +696,36 @@ app.get('/api/events/:eventId/messages/unread', async (req, res) => {
 // MATCHING ROUTES
 // ============================================
 
+app.get('/api/matching-metrics', (req, res) => {
+  const metrics = Object.values(ALL_METRICS).map(m => ({
+    ...m,
+    default: true
+  }));
+  res.json({ metrics, defaults: DEFAULT_METRICS });
+});
+
 app.post('/api/events/:eventId/generate-matches', async (req, res) => {
   try {
     const db = getDb();
     const { eventId } = req.params;
-    const { regenerate } = req.body;
-    
-    // If regenerate is true, clear existing matches first
+    const { regenerate, metrics } = req.body;
+
+    const enabledMetrics = Array.isArray(metrics) && metrics.length > 0
+      ? metrics.filter(m => DEFAULT_METRICS.includes(m))
+      : DEFAULT_METRICS;
+
     if (regenerate) {
-      console.log(`🗑️ Clearing existing matches for event: ${eventId}`);
+      console.log(`Clearing existing matches for event: ${eventId}`);
       db.prepare(`DELETE FROM matches WHERE event_id = ?`).run(eventId);
     }
-    
+
     db.prepare(`UPDATE events SET matching_status = 'processing' WHERE id = ?`).run(eventId);
-    
-    // Queue the matching run to prevent overlapping jobs
+
     try {
       matchingQueue.enqueue(eventId, async () => {
-        await generateMatches(eventId);
+        await generateMatches(eventId, enabledMetrics);
         getDb().prepare(`UPDATE events SET matching_status = 'completed' WHERE id = ?`).run(eventId);
       }).catch((error) => {
-        // If queued job fails
         console.error('Matching error:', error);
         getDb().prepare(`UPDATE events SET matching_status = 'failed' WHERE id = ?`).run(eventId);
       });
@@ -713,7 +735,7 @@ app.post('/api/events/:eventId/generate-matches', async (req, res) => {
       }
       throw e;
     }
-    
+
     res.json({ success: true, message: regenerate ? 'بدأت إعادة المطابقة' : 'بدأت عملية المطابقة' });
   } catch (error) {
     console.error('Generate matches error:', error);

@@ -3,7 +3,8 @@ import { useParams, Link } from 'react-router-dom';
 import {
   ArrowRight, Users, Sparkles, CheckCircle, Clock,
   Plus, Trash2, Edit2, Download, Send, ExternalLink, RefreshCw,
-  FileSpreadsheet, Globe, Eye, BarChart3, Trophy, X
+  FileSpreadsheet, Globe, Eye, BarChart3, Trophy, X,
+  Settings2, ToggleLeft, ToggleRight
 } from 'lucide-react';
 import axios from 'axios';
 import { useToast } from '../contexts/ToastContext';
@@ -19,6 +20,10 @@ function EventManager() {
   const [uploading, setUploading] = useState(false);
   const [matchingStatus, setMatchingStatus] = useState({ status: 'pending', processed: 0, total: 0 });
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showMetricsModal, setShowMetricsModal] = useState(false);
+  const [metricsConfig, setMetricsConfig] = useState(null);
+  const [selectedMetrics, setSelectedMetrics] = useState([]);
+  const [pendingRegenerate, setPendingRegenerate] = useState(false);
   const [newAttendee, setNewAttendee] = useState({
     name: '', phone: '', email: '', title: '', company: '',
     professional_bio: '', skills: '', looking_for: '', offering: ''
@@ -51,7 +56,7 @@ function EventManager() {
   const fetchAttendees = async () => {
     try {
       const response = await axios.get(`/api/events/${eventId}/attendees`);
-      setAttendees(response.data.attendees);
+      setAttendees(response.data.attendees ?? []);
     } catch (error) {
       console.error('Error fetching attendees:', error);
     } finally {
@@ -65,6 +70,27 @@ function EventManager() {
       setMatchingStatus(response.data);
     } catch (error) {
       console.error('Error fetching status:', error);
+    }
+  };
+
+  const fetchHarmonyMembers = () => {
+    showInfo('استيراد أعضاء Harmony غير متوفر حالياً. يمكنك استيراد المشاركين عبر ملف Excel أو الإضافة اليدوية.');
+  };
+
+  const downloadTemplate = async () => {
+    try {
+      const response = await axios.get('/api/template/attendees', { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'harmony-matcher-template.xlsx');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      showSuccess('تم تحميل القالب بنجاح');
+    } catch (error) {
+      showError('فشل في تحميل القالب');
     }
   };
 
@@ -85,11 +111,39 @@ function EventManager() {
     }
   };
 
-  const startMatching = async (regenerate = false) => {
+  const openMetricsModal = async (regenerate = false) => {
+    setPendingRegenerate(regenerate);
     try {
-      await axios.post(`/api/events/${eventId}/generate-matches`, { regenerate });
+      if (!metricsConfig) {
+        const response = await axios.get('/api/matching-metrics');
+        setMetricsConfig(response.data.metrics);
+        setSelectedMetrics(response.data.defaults);
+      }
+      setShowMetricsModal(true);
+    } catch (error) {
+      showError('فشل في تحميل إعدادات المطابقة');
+    }
+  };
+
+  const toggleMetric = (key) => {
+    setSelectedMetrics(prev =>
+      prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
+    );
+  };
+
+  const confirmMatching = async () => {
+    if (selectedMetrics.length === 0) {
+      showError('يجب اختيار معيار واحد على الأقل');
+      return;
+    }
+    setShowMetricsModal(false);
+    try {
+      await axios.post(`/api/events/${eventId}/generate-matches`, {
+        regenerate: pendingRegenerate,
+        metrics: selectedMetrics
+      });
       setMatchingStatus({ ...matchingStatus, status: 'processing' });
-      showInfo(regenerate ? 'بدأت إعادة المطابقة بالذكاء الاصطناعي' : 'بدأت عملية المطابقة بالذكاء الاصطناعي');
+      showInfo(pendingRegenerate ? 'بدأت إعادة المطابقة بالذكاء الاصطناعي' : 'بدأت عملية المطابقة بالذكاء الاصطناعي');
     } catch (error) {
       showError('فشل في بدء المطابقة');
     }
@@ -234,8 +288,8 @@ function EventManager() {
 
           <div className="card flex items-center justify-center">
             {!isProcessing && attendees.length >= 2 && (
-              <button onClick={() => startMatching(shouldRegenerate)} className="btn-success w-full">
-                <Sparkles className="w-5 h-5" />
+              <button onClick={() => openMetricsModal(shouldRegenerate)} className="btn-success w-full">
+                <Settings2 className="w-5 h-5" />
                 {shouldRegenerate ? 'إعادة المطابقة' : 'بدء المطابقة بالذكاء الاصطناعي'}
               </button>
             )}
@@ -288,6 +342,10 @@ function EventManager() {
             />
 
             <div className="flex flex-wrap gap-3 mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
+              <button onClick={downloadTemplate} className="btn-secondary">
+                <Download className="w-5 h-5" />
+                تحميل القالب
+              </button>
               <button onClick={fetchHarmonyMembers} className="btn-secondary">
                 <Globe className="w-5 h-5" />
                 استيراد من Harmony
@@ -532,6 +590,91 @@ function EventManager() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Matching Metrics Selection Modal */}
+      {showMetricsModal && metricsConfig && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl max-w-lg w-full p-6 fade-in my-8">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-harmony-100 rounded-xl flex items-center justify-center">
+                  <Settings2 className="w-5 h-5 text-harmony-600" />
+                </div>
+                <h3 className="text-xl font-bold text-gray-900 dark:text-white">إعدادات المطابقة</h3>
+              </div>
+              <button
+                onClick={() => setShowMetricsModal(false)}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <p className="text-gray-500 dark:text-gray-400 text-sm mb-5">
+              اختر المعايير التي تريد استخدامها في عملية المطابقة
+            </p>
+
+            <div className="space-y-2 max-h-96 overflow-y-auto">
+              {metricsConfig.map((metric) => {
+                const isOn = selectedMetrics.includes(metric.key);
+                return (
+                  <button
+                    key={metric.key}
+                    onClick={() => toggleMetric(metric.key)}
+                    className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-right ${
+                      isOn
+                        ? 'border-harmony-500 bg-harmony-50 dark:bg-harmony-900/20'
+                        : 'border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500'
+                    }`}
+                  >
+                    {isOn ? (
+                      <ToggleRight className="w-6 h-6 text-harmony-600 flex-shrink-0" />
+                    ) : (
+                      <ToggleLeft className="w-6 h-6 text-gray-300 dark:text-gray-500 flex-shrink-0" />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className={`font-medium text-sm ${isOn ? 'text-harmony-700 dark:text-harmony-400' : 'text-gray-700 dark:text-gray-300'}`}>
+                        {metric.nameAr}
+                      </div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                        {metric.descAr}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
+              <button
+                onClick={() => setSelectedMetrics(metricsConfig.map(m => m.key))}
+                className="text-sm text-harmony-600 hover:text-harmony-700 dark:text-harmony-400"
+              >
+                تحديد الكل
+              </button>
+              <span className="text-xs text-gray-400">
+                {selectedMetrics.length} / {metricsConfig.length} معايير مفعّلة
+              </span>
+            </div>
+
+            <div className="flex gap-3 mt-4">
+              <button
+                onClick={confirmMatching}
+                disabled={selectedMetrics.length === 0}
+                className="btn-success flex-1 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Sparkles className="w-5 h-5" />
+                {pendingRegenerate ? 'إعادة المطابقة' : 'بدء المطابقة'}
+              </button>
+              <button
+                onClick={() => setShowMetricsModal(false)}
+                className="btn-secondary flex-1"
+              >
+                إلغاء
+              </button>
+            </div>
           </div>
         </div>
       )}
