@@ -1,7 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, X, Phone, MessageCircle, User, Clock } from 'lucide-react';
+import { Send, X, Phone, MessageCircle, User, Clock, Check, CheckCheck } from 'lucide-react';
 import { useMessaging } from '../contexts/MessagingContext';
 import { useToast } from '../contexts/ToastContext';
+
+const MessageStatus = ({ message }) => {
+  if (message.is_read) {
+    return <CheckCheck className="w-3.5 h-3.5 text-blue-300" />;
+  }
+  if (message.is_delivered) {
+    return <CheckCheck className="w-3.5 h-3.5 text-harmony-100/70" />;
+  }
+  return <Check className="w-3.5 h-3.5 text-harmony-100/70" />;
+};
 
 const MessageModal = ({ isOpen, onClose, attendee, currentUser, eventId }) => {
   const { showSuccess, showError } = useToast();
@@ -13,7 +23,9 @@ const MessageModal = ({ isOpen, onClose, attendee, currentUser, eventId }) => {
     conversations,
     loadMessages,
     activeConversation,
-    setActiveConversation
+    setActiveConversation,
+    createConversation,
+    markAsRead
   } = useMessaging();
   const [newMessage, setNewMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -32,8 +44,8 @@ const MessageModal = ({ isOpen, onClose, attendee, currentUser, eventId }) => {
       setActiveConversation(conversation);
       joinConversation(conversationId);
       loadMessages(conversationId);
+      markAsRead(conversationId);
 
-      // Focus input when modal opens
       setTimeout(() => {
         inputRef.current?.focus();
       }, 100);
@@ -42,27 +54,42 @@ const MessageModal = ({ isOpen, onClose, attendee, currentUser, eventId }) => {
     return () => {
       setActiveConversation(null);
     };
-  }, [isOpen, conversationId, joinConversation, loadMessages, setActiveConversation, conversation]);
+  }, [isOpen, conversationId, joinConversation, loadMessages, setActiveConversation, conversation, markAsRead]);
 
   useEffect(() => {
-    // Scroll to bottom when new messages arrive
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    if (isOpen && conversationId && messages.length > 0) {
+      const hasUnread = messages.some(m => m.sender_id !== currentUser?.id && !m.is_read);
+      if (hasUnread) {
+        markAsRead(conversationId);
+      }
+    }
+  }, [messages, isOpen, conversationId, currentUser?.id, markAsRead]);
 
   const handleSendMessage = async (e) => {
     e.preventDefault();
 
-    if (!newMessage.trim()) {
-      return;
-    }
+    if (!newMessage.trim()) return;
 
     if (!isConnected) {
-      showError('الاتصال غير متاح - سيتم إرسال الرسالة لاحقاً');
+      showError('الاتصال غير متاح حالياً');
       return;
     }
 
     try {
-      await sendMessage(conversationId, newMessage.trim());
+      let cId = conversationId;
+      if (!cId && eventId && currentUser?.id && attendee?.id) {
+        const newConv = await createConversation(eventId, currentUser.id, attendee.id);
+        if (newConv) {
+          cId = newConv.id;
+          setActiveConversation(newConv);
+          joinConversation(cId);
+        } else {
+          showError('فشل في إنشاء المحادثة');
+          return;
+        }
+      }
+      await sendMessage(cId, newMessage.trim());
       setNewMessage('');
       showSuccess('تم إرسال الرسالة');
     } catch (error) {
@@ -138,7 +165,11 @@ const MessageModal = ({ isOpen, onClose, attendee, currentUser, eventId }) => {
               <Phone className="w-5 h-5" />
             </button>
             <button
-              onClick={() => window.open(`https://wa.me/${attendee?.phone?.replace(/\D/g, '')}`, '_blank')}
+              onClick={() => {
+                const clean = (attendee?.phone || '').replace(/\D/g, '');
+                const waPhone = clean.startsWith('972') ? clean : `972${clean.replace(/^0/, '')}`;
+                window.open(`https://wa.me/${waPhone}`, '_blank');
+              }}
               className="p-2 text-gray-400 hover:text-green-600 dark:hover:text-green-400 transition-colors"
               title="واتساب"
             >
@@ -175,16 +206,23 @@ const MessageModal = ({ isOpen, onClose, attendee, currentUser, eventId }) => {
                   }`}
                 >
                   <p className="text-sm">{message.content}</p>
-                  <p className={`text-xs mt-1 ${
-                    message.sender_id === currentUser?.id
-                      ? 'text-harmony-100'
-                      : 'text-gray-500 dark:text-gray-400'
+                  <div className={`flex items-center gap-1 mt-1 ${
+                    message.sender_id === currentUser?.id ? 'justify-end' : ''
                   }`}>
-                    {new Date(message.created_at).toLocaleTimeString('ar-EG', {
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    })}
-                  </p>
+                    <span className={`text-xs ${
+                      message.sender_id === currentUser?.id
+                        ? 'text-harmony-100'
+                        : 'text-gray-500 dark:text-gray-400'
+                    }`}>
+                      {new Date(message.created_at).toLocaleTimeString('ar-EG', {
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </span>
+                    {message.sender_id === currentUser?.id && (
+                      <MessageStatus message={message} />
+                    )}
+                  </div>
                 </div>
               </div>
             ))
@@ -214,7 +252,7 @@ const MessageModal = ({ isOpen, onClose, attendee, currentUser, eventId }) => {
               }}
               placeholder={`اكتب رسالة لـ ${attendee?.name}...`}
               className="flex-1 input"
-              disabled={!isConnected}
+              disabled={!isConnected && !!conversationId}
             />
             <button
               type="submit"

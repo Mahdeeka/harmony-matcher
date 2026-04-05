@@ -52,12 +52,6 @@ export default function EventLanding() {
             <Sparkles className="w-5 h-5" />
             دخول المشاركين
           </button>
-          <button
-            className="btn-secondary w-full"
-            onClick={() => navigate('/admin')}
-          >
-            لوحة التحكم (Admin)
-          </button>
         </div>
 
         <div className="mt-6 text-center text-xs text-gray-500">

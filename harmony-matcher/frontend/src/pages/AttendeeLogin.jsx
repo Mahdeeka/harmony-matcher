@@ -241,6 +241,26 @@ function AttendeeLogin() {
     );
   }
 
+  if (!event && error) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-harmony-600 to-harmony-800 flex items-center justify-center p-4">
+        <div className="bg-white rounded-3xl max-w-md w-full p-8 text-center">
+          <div className="w-16 h-16 bg-red-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <AlertCircle className="w-8 h-8 text-red-500" />
+          </div>
+          <h2 className="text-xl font-bold text-gray-900 mb-2">{error}</h2>
+          <p className="text-gray-500 text-sm mb-6">تأكد من صحة رابط الفعالية وحاول مرة أخرى</p>
+          <button onClick={() => { setError(''); fetchEvent(); }} className="btn-primary w-full mb-3">
+            إعادة المحاولة
+          </button>
+          <button onClick={() => navigate('/')} className="btn-secondary w-full">
+            العودة للرئيسية
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-harmony-600 to-harmony-800 flex items-center justify-center p-4 safe-area-top safe-area-bottom">
       <div className={`bg-white rounded-3xl max-w-md w-full shadow-xl fade-in transition-all duration-300 ${

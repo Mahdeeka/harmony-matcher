@@ -355,9 +355,35 @@ html {
 }
 
 .modal-content {
-  @apply bg-white dark:bg-gray-800 dark:border dark:border-gray-700 rounded-3xl shadow-xl max-w-md w-full p-6 my-auto;
+  @apply bg-white dark:bg-gray-800 dark:border dark:border-gray-700 rounded-3xl shadow-xl max-w-md w-full p-6 my-auto max-h-[90vh] overflow-y-auto;
   animation: scale-in 0.2s ease-out;
-  overflow: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.modal-content:hover {
+  scrollbar-color: rgba(0,0,0,0.15) transparent;
+}
+
+.modal-content::-webkit-scrollbar {
+  width: 4px;
+}
+
+.modal-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.modal-content::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 4px;
+}
+
+.modal-content:hover::-webkit-scrollbar-thumb {
+  background: rgba(0,0,0,0.15);
+}
+
+.modal-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(0,0,0,0.25);
 }
 
 /* Mobile modal adjustments */

@@ -211,6 +211,7 @@ async function initDatabase() {
       sender_id TEXT NOT NULL,
       content TEXT NOT NULL,
       message_type TEXT DEFAULT 'text',
+      is_delivered INTEGER DEFAULT 0,
       is_read INTEGER DEFAULT 0,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
@@ -379,6 +380,7 @@ async function initDatabase() {
   try { db.exec(`ALTER TABLE events ADD COLUMN street TEXT`); } catch (e) {}
 
   try { db.exec(`ALTER TABLE challenges ADD COLUMN image_url TEXT`); } catch (e) {}
+  try { db.exec(`ALTER TABLE messages ADD COLUMN is_delivered INTEGER DEFAULT 0`); } catch (e) {}
 
   console.log('✅ Database initialized successfully');
   return db;

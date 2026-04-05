@@ -39,94 +39,121 @@ const categoryLabels = {
   engagement: 'تحديات التفاعل'
 };
 
+function ChallengeTooltip({ text, children }) {
+  const [show, setShow] = useState(false);
+
+  return (
+    <div
+      className="relative"
+      onMouseEnter={() => setShow(true)}
+      onMouseLeave={() => setShow(false)}
+      onClick={(e) => { e.stopPropagation(); setShow(prev => !prev); }}
+    >
+      {children}
+      {show && (
+        <div className="absolute z-50 bottom-full right-0 mb-2 w-56 p-3 rounded-xl bg-gray-900 text-white text-xs leading-relaxed shadow-lg" style={{ direction: 'rtl' }}>
+          {text}
+          <div className="absolute top-full right-4 w-0 h-0 border-x-[6px] border-x-transparent border-t-[6px] border-t-gray-900" />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ChallengeCard({ challenge, compact = false }) {
   const Icon = iconMap[challenge.icon] || Target;
   const colors = badgeColors[challenge.badge_color] || badgeColors.blue;
   const isCompleted = challenge.is_completed === 1;
   const progress = challenge.target > 0 ? Math.min((challenge.progress / challenge.target) * 100, 100) : 0;
 
+  const tooltipText = `${challenge.description_ar}\n\nالهدف: ${challenge.target} • النقاط: ${challenge.points}`;
+
   if (compact) {
     return (
-      <div className={`flex items-center gap-3 p-3 rounded-xl border ${
-        isCompleted ? 'bg-green-50 border-green-200' : `${colors.bg} ${colors.border}`
-      }`}>
-        <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-          isCompleted ? 'bg-green-500 text-white' : `${colors.bg} ${colors.text}`
+      <ChallengeTooltip text={tooltipText}>
+        <div className={`flex items-center gap-3 p-3 rounded-xl border cursor-default ${
+          isCompleted ? 'bg-green-50 border-green-200' : `${colors.bg} ${colors.border}`
         }`}>
-          {isCompleted ? <CheckCircle className="w-5 h-5" /> : <Icon className="w-5 h-5" />}
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="font-medium text-gray-900 text-sm truncate">{challenge.name_ar}</span>
-            {isCompleted && (
-              <span className="text-xs bg-green-500 text-white px-2 py-0.5 rounded-full">+{challenge.points}</span>
+          <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+            isCompleted ? 'bg-green-500 text-white' : `${colors.bg} ${colors.text}`
+          }`}>
+            {isCompleted ? <CheckCircle className="w-5 h-5" /> : <Icon className="w-5 h-5" />}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="font-medium text-gray-900 text-sm truncate">{challenge.name_ar}</span>
+              {isCompleted && (
+                <span className="text-xs bg-green-500 text-white px-2 py-0.5 rounded-full">+{challenge.points}</span>
+              )}
+            </div>
+            {!isCompleted && (
+              <div className="flex items-center gap-2 mt-1">
+                <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full ${colors.progress} transition-all duration-500`}
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+                <span className="text-xs text-gray-500">{challenge.progress}/{challenge.target}</span>
+              </div>
             )}
           </div>
-          {!isCompleted && (
-            <div className="flex items-center gap-2 mt-1">
-              <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                <div
-                  className={`h-full ${colors.progress} transition-all duration-500`}
-                  style={{ width: `${progress}%` }}
-                />
-              </div>
-              <span className="text-xs text-gray-500">{challenge.progress}/{challenge.target}</span>
-            </div>
-          )}
         </div>
-      </div>
+      </ChallengeTooltip>
     );
   }
 
   return (
-    <div className={`card transition-all ${
-      isCompleted ? 'border-green-200 bg-green-50/50' : ''
-    }`}>
-      <div className="flex items-start gap-4">
-        <div className={`w-14 h-14 rounded-xl flex items-center justify-center border ${
-          isCompleted
-            ? 'bg-green-500 text-white border-green-500'
-            : `${colors.bg} ${colors.text} ${colors.border}`
-        }`}>
-          {isCompleted ? <CheckCircle className="w-7 h-7" /> : <Icon className="w-7 h-7" />}
-        </div>
-
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center justify-between gap-2 mb-1">
-            <h3 className="font-bold text-gray-900">{challenge.name_ar}</h3>
-            <div className={`px-2 py-1 rounded-lg text-sm font-bold ${
-              isCompleted ? 'bg-green-500 text-white' : `${colors.bg} ${colors.text}`
-            }`}>
-              {isCompleted ? `+${challenge.points_earned || challenge.points}` : `${challenge.points} نقطة`}
-            </div>
+    <ChallengeTooltip text={tooltipText}>
+      <div className={`card transition-all cursor-default ${
+        isCompleted ? 'border-green-200 bg-green-50/50' : ''
+      }`}>
+        <div className="flex items-start gap-4">
+          <div className={`w-14 h-14 rounded-xl flex items-center justify-center border ${
+            isCompleted
+              ? 'bg-green-500 text-white border-green-500'
+              : `${colors.bg} ${colors.text} ${colors.border}`
+          }`}>
+            {isCompleted ? <CheckCircle className="w-7 h-7" /> : <Icon className="w-7 h-7" />}
           </div>
 
-          <p className="text-sm text-gray-600 mb-3">{challenge.description_ar}</p>
-
-          {!isCompleted && (
-            <div className="space-y-1">
-              <div className="flex justify-between text-xs text-gray-500">
-                <span>التقدم</span>
-                <span>{challenge.progress} / {challenge.target}</span>
-              </div>
-              <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                <div
-                  className={`h-full ${colors.progress} transition-all duration-500`}
-                  style={{ width: `${progress}%` }}
-                />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <h3 className="font-bold text-gray-900">{challenge.name_ar}</h3>
+              <div className={`px-2 py-1 rounded-lg text-sm font-bold ${
+                isCompleted ? 'bg-green-500 text-white' : `${colors.bg} ${colors.text}`
+              }`}>
+                {isCompleted ? `+${challenge.points_earned || challenge.points}` : `${challenge.points} نقطة`}
               </div>
             </div>
-          )}
 
-          {isCompleted && challenge.completed_at && (
-            <div className="flex items-center gap-2 text-sm text-green-600">
-              <CheckCircle className="w-4 h-4" />
-              <span>تم إكماله</span>
-            </div>
-          )}
+            <p className="text-sm text-gray-600 mb-3">{challenge.description_ar}</p>
+
+            {!isCompleted && (
+              <div className="space-y-1">
+                <div className="flex justify-between text-xs text-gray-500">
+                  <span>التقدم</span>
+                  <span>{challenge.progress} / {challenge.target}</span>
+                </div>
+                <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full ${colors.progress} transition-all duration-500`}
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {isCompleted && challenge.completed_at && (
+              <div className="flex items-center gap-2 text-sm text-green-600">
+                <CheckCircle className="w-4 h-4" />
+                <span>تم إكماله</span>
+              </div>
+            )}
+          </div>
         </div>
       </div>
-    </div>
+    </ChallengeTooltip>
   );
 }
 
@@ -177,11 +204,11 @@ function ChallengesPanel({ attendeeId, eventId, isOpen, onClose }) {
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div
-        className="modal-content max-w-2xl max-h-[90vh] overflow-y-auto"
+        className="modal-content max-w-2xl max-h-[90vh] !overflow-hidden !p-0 flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6 sticky top-0 bg-white pb-4 border-b">
+        {/* Header — fixed outside scroll */}
+        <div className="flex items-center justify-between p-6 pb-4 border-b border-gray-200 shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center">
               <Trophy className="w-6 h-6 text-white" />
@@ -196,6 +223,8 @@ function ChallengesPanel({ attendeeId, eventId, isOpen, onClose }) {
           </button>
         </div>
 
+        {/* Scrollable body */}
+        <div className="overflow-y-auto flex-1 p-6 pt-4">
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <div className="spinner"></div>
@@ -332,6 +361,7 @@ function ChallengesPanel({ attendeeId, eventId, isOpen, onClose }) {
             </div>
           </>
         )}
+        </div>
       </div>
     </div>
   );

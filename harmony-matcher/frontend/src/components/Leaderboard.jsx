@@ -134,11 +134,11 @@ function Leaderboard({ eventId, currentUserId, isOpen, onClose }) {
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div
-        className="modal-content max-w-xl max-h-[90vh] overflow-y-auto"
+        className="modal-content max-w-xl max-h-[90vh] !overflow-hidden !p-0 flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6 sticky top-0 bg-white pb-4 border-b">
+        {/* Header — fixed outside scroll */}
+        <div className="flex items-center justify-between p-6 pb-4 border-b border-gray-200 shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-xl flex items-center justify-center">
               <Trophy className="w-6 h-6 text-white" />
@@ -153,6 +153,8 @@ function Leaderboard({ eventId, currentUserId, isOpen, onClose }) {
           </button>
         </div>
 
+        {/* Scrollable body */}
+        <div className="overflow-y-auto flex-1 p-6 pt-4">
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <div className="spinner"></div>
@@ -282,6 +284,7 @@ function Leaderboard({ eventId, currentUserId, isOpen, onClose }) {
             </div>
           </>
         )}
+        </div>
       </div>
     </div>
   );

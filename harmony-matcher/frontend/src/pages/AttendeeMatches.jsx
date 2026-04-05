@@ -4,7 +4,7 @@ import {
   Users, Phone, MessageCircle, Linkedin, Star, ChevronDown,
   RefreshCw, LogOut, Sparkles, Heart, ExternalLink, Filter,
   Search, X, ThumbsUp, MessageSquare, BookmarkPlus, Trophy, MoreVertical,
-  Target, Award
+  Target, Award, PenLine, Inbox, Send, Mail, Clock, CheckCheck
 } from 'lucide-react';
 import axios from 'axios';
 import { useToast } from '../contexts/ToastContext';
@@ -27,7 +27,8 @@ function AttendeeMatches() {
     sendMessage,
     loadConversations,
     createConversation,
-    isConnected
+    isConnected,
+    markAsRead
   } = useMessaging();
 
   const [attendee, setAttendee] = useState(null);
@@ -35,6 +36,7 @@ function AttendeeMatches() {
   const [filteredMatches, setFilteredMatches] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [matchError, setMatchError] = useState(null);
   const [currentBatch, setCurrentBatch] = useState(1);
   const [expandedMatch, setExpandedMatch] = useState(null);
   const [event, setEvent] = useState(null);
@@ -51,11 +53,24 @@ function AttendeeMatches() {
     mutualOnly: false,
     savedOnly: false
   });
-  const [savedMatches, setSavedMatches] = useState(new Set());
+  const [savedMatches, setSavedMatches] = useState(() => {
+    try {
+      const stored = localStorage.getItem(`harmony_saved_${eventId}`);
+      return stored ? new Set(JSON.parse(stored)) : new Set();
+    } catch { return new Set(); }
+  });
+
+  // Tab state
+  const [activeTab, setActiveTab] = useState('matches');
 
   // Messaging modal state
   const [messageModalOpen, setMessageModalOpen] = useState(false);
   const [selectedAttendee, setSelectedAttendee] = useState(null);
+
+  // Bio edit modal state
+  const [bioModalOpen, setBioModalOpen] = useState(false);
+  const [bioText, setBioText] = useState('');
+  const [bioSaving, setBioSaving] = useState(false);
 
   // Gamification modal state
   const [gamificationModalOpen, setGamificationModalOpen] = useState(false);
@@ -96,6 +111,12 @@ function AttendeeMatches() {
     fetchEvent();
     fetchMatches();
   }, [eventId]);
+
+  useEffect(() => {
+    if (activeTab === 'messages' && eventId) {
+      loadConversations(eventId);
+    }
+  }, [activeTab, eventId, loadConversations]);
 
   const initializeChallenges = async (attendeeId) => {
     try {
@@ -157,7 +178,8 @@ function AttendeeMatches() {
         match.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         match.company?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         match.industry?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        match.professional_bio?.toLowerCase().includes(searchTerm.toLowerCase())
+        match.professional_bio?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        match.personal_bio?.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
 
@@ -186,7 +208,7 @@ function AttendeeMatches() {
     if (top5Only) filtered = filtered.slice(0, 5);
 
     setFilteredMatches(filtered);
-  }, [allMatches, searchTerm, filters, savedMatches]);
+  }, [allMatches, searchTerm, filters, savedMatches, top5Only]);
 
   const fetchEvent = async () => {
     try {
@@ -204,10 +226,12 @@ function AttendeeMatches() {
     const { id: attendeeId } = JSON.parse(storedAttendee);
 
     try {
+      setMatchError(null);
       const response = await axios.get(`/api/attendees/${attendeeId}/matches`);
       setAllMatches(response.data.matches);
     } catch (error) {
       console.error('Error fetching matches:', error);
+      setMatchError('فشل في تحميل التطابقات');
     } finally {
       setLoading(false);
     }
@@ -258,6 +282,7 @@ function AttendeeMatches() {
       updateChallengeProgress('bookmark_collector');
     }
     setSavedMatches(newSaved);
+    localStorage.setItem(`harmony_saved_${eventId}`, JSON.stringify([...newSaved]));
   };
 
   const handleFilterChange = (filterType, value) => {
@@ -286,6 +311,36 @@ function AttendeeMatches() {
     if (filters.mutualOnly) count++;
     if (filters.savedOnly) count++;
     return count;
+  };
+
+  const openBioModal = () => {
+    setBioText(attendee?.personal_bio || '');
+    setBioModalOpen(true);
+  };
+
+  const saveBio = async () => {
+    if (!attendee?.id) return;
+    setBioSaving(true);
+    try {
+      const token = localStorage.getItem(`harmony_token_${eventId}`);
+      const { data } = await axios.put(`/api/attendees/${attendee.id}/bio`, {
+        personal_bio: bioText.trim()
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (data.success) {
+        const updated = { ...attendee, personal_bio: bioText.trim() };
+        setAttendee(updated);
+        localStorage.setItem(`harmony_attendee_${eventId}`, JSON.stringify(updated));
+        showSuccess('تم تحديث النبذة بنجاح');
+        setBioModalOpen(false);
+      }
+    } catch (error) {
+      console.error('Save bio error:', error);
+      showInfo('فشل في حفظ النبذة');
+    } finally {
+      setBioSaving(false);
+    }
   };
 
   const openMessageModal = (matchData) => {
@@ -413,11 +468,31 @@ function AttendeeMatches() {
               <MessagingNav
                 eventId={eventId}
                 onConversationSelect={(conversation) => {
-                  // Handle conversation selection
-                  console.log('Selected conversation:', conversation);
+                  const otherId = conversation.participant1_id === attendee?.id
+                    ? conversation.participant2_id : conversation.participant1_id;
+                  const otherName = conversation.participant1_id === attendee?.id
+                    ? conversation.participant2_name : conversation.participant1_name;
+                  setSelectedAttendee({
+                    id: otherId,
+                    name: otherName || 'مستخدم',
+                    phone: conversation.participant1_id === attendee?.id
+                      ? conversation.participant2_phone : conversation.participant1_phone
+                  });
+                  setMessageModalOpen(true);
                 }}
                 currentUser={attendee}
               />
+              {/* Profile / Bio Button */}
+              <button
+                onClick={openBioModal}
+                className="relative text-gray-400 hover:text-harmony-600 transition-colors"
+                title="نبذة عني"
+              >
+                <PenLine className="w-5 h-5" />
+                {!attendee?.personal_bio && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 rounded-full w-2 h-2"></span>
+                )}
+              </button>
               {/* Challenges Button */}
               <button
                 onClick={() => setChallengesPanelOpen(true)}
@@ -479,6 +554,136 @@ function AttendeeMatches() {
           </div>
         </div>
 
+        {/* Tab Bar */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 mb-6 flex overflow-hidden">
+          <button
+            onClick={() => setActiveTab('matches')}
+            className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium transition-colors ${
+              activeTab === 'matches'
+                ? 'bg-harmony-50 text-harmony-700 border-b-2 border-harmony-600'
+                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            <Users className="w-4 h-4" />
+            التطابقات
+            {allMatches.length > 0 && (
+              <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                activeTab === 'matches' ? 'bg-harmony-200 text-harmony-800' : 'bg-gray-200 text-gray-600'
+              }`}>{allMatches.length}</span>
+            )}
+          </button>
+          <button
+            onClick={() => setActiveTab('messages')}
+            className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium transition-colors ${
+              activeTab === 'messages'
+                ? 'bg-harmony-50 text-harmony-700 border-b-2 border-harmony-600'
+                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            <Inbox className="w-4 h-4" />
+            الرسائل
+            {unreadCount > 0 && (
+              <span className="text-xs px-1.5 py-0.5 rounded-full bg-red-500 text-white">
+                {unreadCount}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {/* ===== MESSAGES TAB ===== */}
+        {activeTab === 'messages' && (
+          <div>
+            {conversations.length === 0 ? (
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-12 text-center">
+                <Mail className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                <h3 className="text-lg font-bold text-gray-700 mb-2">لا توجد محادثات بعد</h3>
+                <p className="text-gray-500 mb-4">ابدأ بالتواصل مع أحد تطابقاتك لبدء محادثة</p>
+                <button
+                  onClick={() => setActiveTab('matches')}
+                  className="btn-primary px-6 py-2"
+                >
+                  عرض التطابقات
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {conversations.map((conv) => {
+                  const isP1 = conv.participant1_id === attendee?.id;
+                  const otherName = isP1
+                    ? (conv.other_participant_name || conv.participant2_name)
+                    : (conv.other_participant_name || conv.participant1_name);
+                  const otherPhoto = isP1
+                    ? (conv.other_participant_photo || conv.participant2_photo)
+                    : (conv.other_participant_photo || conv.participant1_photo);
+                  const otherId = isP1 ? conv.participant2_id : conv.participant1_id;
+                  const myUnread = isP1 ? conv.unread_count1 : conv.unread_count2;
+                  const unread = conv.unread_count ?? myUnread ?? 0;
+                  const lastTime = conv.last_message_time
+                    ? new Date(conv.last_message_time).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })
+                    : '';
+
+                  return (
+                    <div
+                      key={conv.id}
+                      onClick={() => {
+                        setSelectedAttendee({
+                          id: otherId,
+                          name: otherName || 'مستخدم',
+                          photo_url: otherPhoto
+                        });
+                        setMessageModalOpen(true);
+                      }}
+                      className={`bg-white rounded-xl shadow-sm border p-4 cursor-pointer hover:shadow-md transition-all flex items-center gap-4 ${
+                        unread > 0 ? 'border-harmony-200 bg-harmony-50/30' : 'border-gray-100'
+                      }`}
+                    >
+                      {otherPhoto ? (
+                        <img src={otherPhoto} alt={otherName} className="w-12 h-12 rounded-full object-cover" />
+                      ) : (
+                        <div className="w-12 h-12 bg-harmony-100 rounded-full flex items-center justify-center shrink-0">
+                          <span className="text-harmony-600 font-bold text-lg">
+                            {otherName?.charAt(0)}
+                          </span>
+                        </div>
+                      )}
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className={`font-bold truncate ${unread > 0 ? 'text-gray-900' : 'text-gray-700'}`}>
+                            {otherName || 'مستخدم'}
+                          </span>
+                          <span className="text-xs text-gray-400 shrink-0 flex items-center gap-1">
+                            {lastTime}
+                          </span>
+                        </div>
+                        {conv.last_message && (
+                          <p className={`text-sm truncate mt-0.5 ${
+                            unread > 0 ? 'text-gray-800 font-medium' : 'text-gray-500'
+                          }`}>
+                            {conv.last_message}
+                          </p>
+                        )}
+                      </div>
+
+                      {unread > 0 && (
+                        <span className="bg-harmony-600 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center shrink-0">
+                          {unread}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="text-center py-8 text-gray-400 text-sm">
+              <p>Powered by Harmony Community</p>
+            </div>
+          </div>
+        )}
+
+        {/* ===== MATCHES TAB ===== */}
+        {activeTab === 'matches' && <>
         {/* Challenges Quick Stats */}
         {(challengeStats.totalPoints > 0 || challengeStats.challengesCompleted > 0) && (
           <div
@@ -518,13 +723,14 @@ function AttendeeMatches() {
           <div className="flex flex-col sm:flex-row gap-4">
             {/* Search Bar */}
             <div className="flex-1 relative">
-              <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+              <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5 pointer-events-none" />
               <input
                 type="text"
                 placeholder="البحث في التطابقات..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="input pr-10"
+                className="input"
+                style={{ paddingRight: '2.5rem' }}
               />
             </div>
 
@@ -626,6 +832,17 @@ function AttendeeMatches() {
             </div>
           )}
         </div>
+
+        {/* Error Banner */}
+        {matchError && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6 flex items-center justify-between">
+            <p className="text-red-700 text-sm">{matchError}</p>
+            <button onClick={fetchMatches} className="text-red-600 hover:text-red-800 font-medium text-sm flex items-center gap-1">
+              <RefreshCw className="w-4 h-4" />
+              إعادة المحاولة
+            </button>
+          </div>
+        )}
 
         {/* Matches */}
         {loading ? (
@@ -787,6 +1004,12 @@ function AttendeeMatches() {
                 {/* Expanded Details */}
                 {expandedMatch === match.id && (
                   <div className="mt-4 pt-4 border-t border-gray-100 fade-in">
+                    {match.personal_bio && (
+                      <div className="mb-3">
+                        <p className="text-gray-500 text-xs mb-1">نبذة شخصية:</p>
+                        <p className="text-gray-700 text-sm">{match.personal_bio}</p>
+                      </div>
+                    )}
                     {match.professional_bio && (
                       <div className="mb-3">
                         <p className="text-gray-500 text-xs mb-1">نبذة مهنية:</p>
@@ -815,7 +1038,7 @@ function AttendeeMatches() {
                 )}
 
                 {/* Show More Toggle */}
-                {(match.professional_bio || match.skills || match.looking_for) && (
+                {(match.personal_bio || match.professional_bio || match.skills || match.looking_for) && (
                   <button
                     onClick={() => {
                       const next = expandedMatch === match.id ? null : match.id;
@@ -909,6 +1132,7 @@ function AttendeeMatches() {
         <div className="text-center py-8 text-gray-400 text-sm">
           <p>Powered by Harmony Community</p>
         </div>
+        </>}
       </main>
 
       {/* Message Modal */}
@@ -917,6 +1141,7 @@ function AttendeeMatches() {
         onClose={() => {
           setMessageModalOpen(false);
           setSelectedAttendee(null);
+          loadConversations(eventId);
         }}
         attendee={selectedAttendee}
         currentUser={attendee}
@@ -955,6 +1180,51 @@ function AttendeeMatches() {
           points={completedChallenge.points}
           onClose={() => setCompletedChallenge(null)}
         />
+      )}
+
+      {/* Bio Edit Modal */}
+      {bioModalOpen && (
+        <div className="modal-backdrop" onClick={() => setBioModalOpen(false)}>
+          <div className="modal-content max-w-md" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-4 border-b border-gray-200">
+              <h3 className="text-lg font-bold text-gray-900">نبذة عني</h3>
+              <button onClick={() => setBioModalOpen(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4">
+              <p className="text-sm text-gray-500 mb-3">
+                اكتب نبذة قصيرة عن نفسك تظهر للآخرين عند عرض ملفك الشخصي
+              </p>
+              <textarea
+                value={bioText}
+                onChange={(e) => setBioText(e.target.value.slice(0, 500))}
+                placeholder="مثال: مهندس برمجيات بخبرة 5 سنوات، مهتم بريادة الأعمال والتقنية..."
+                className="input w-full h-32 resize-none"
+                dir="rtl"
+                autoFocus
+              />
+              <div className="flex items-center justify-between mt-2">
+                <span className="text-xs text-gray-400">{bioText.length}/500</span>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setBioModalOpen(false)}
+                    className="btn-secondary px-4 py-2 text-sm"
+                  >
+                    إلغاء
+                  </button>
+                  <button
+                    onClick={saveBio}
+                    disabled={bioSaving}
+                    className="btn-primary px-4 py-2 text-sm disabled:opacity-50"
+                  >
+                    {bioSaving ? 'جاري الحفظ...' : 'حفظ'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

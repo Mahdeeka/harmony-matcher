@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { io } from 'socket.io-client';
 
 const MessagingContext = createContext();
@@ -16,10 +16,11 @@ export const MessagingProvider = ({ children }) => {
   const [isConnected, setIsConnected] = useState(false);
   const [conversations, setConversations] = useState([]);
   const [activeConversation, setActiveConversation] = useState(null);
+  const activeConvRef = useRef(null);
   const [messages, setMessages] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [typingUsers, setTypingUsers] = useState(new Set());
-
+  const eventIdRef = useRef(null); 
   // Initialize socket connection
   useEffect(() => {
     // Try to find any harmony token (for attendees)
@@ -34,6 +35,7 @@ export const MessagingProvider = ({ children }) => {
 
     newSocket.on('connect', () => {
       console.log('Connected to messaging server');
+      newSocket.emit('authenticate', { token });
       setIsConnected(true);
     });
 
@@ -45,19 +47,37 @@ export const MessagingProvider = ({ children }) => {
     newSocket.on('new_message', (data) => {
       const { conversationId, message } = data;
 
-      // Add message to current conversation if active
-      if (activeConversation?.id === conversationId) {
+      if (activeConvRef.current?.id === conversationId) {
         setMessages(prev => [...prev, message]);
       }
 
-      // Update conversation list
-      setConversations(prev => prev.map(conv =>
-        conv.id === conversationId
-          ? { ...conv, last_message: message.content, last_message_time: message.created_at, unread_count: conv.unread_count + 1 }
-          : conv
-      ));
+      setConversations(prev => {
+        const exists = prev.some(c => c.id === conversationId);
+        if (exists) {
+          return prev.map(conv =>
+            conv.id === conversationId
+              ? { ...conv, last_message: message.content, last_message_time: message.created_at, unread_count: (conv.unread_count || 0) + 1 }
+              : conv
+          );
+        }
+        // New conversation — reload from server
+        if (eventIdRef.current) {
+          const evId = eventIdRef.current;
+          const tk = localStorage.getItem('harmony_token_current') ||
+                     localStorage.getItem(`harmony_token_${evId}`);
+          if (tk) {
+            fetch(`/api/events/${evId}/conversations`, {
+              headers: { Authorization: `Bearer ${tk}` }
+            }).then(r => r.json()).then(d => {
+              setConversations(d.conversations || []);
+              const total = (d.conversations || []).reduce((s, c) => s + (c.unread_count || 0), 0);
+              setUnreadCount(total);
+            }).catch(() => {});
+          }
+        }
+        return prev;
+      });
 
-      // Update unread count
       setUnreadCount(prev => prev + 1);
     });
 
@@ -73,6 +93,24 @@ export const MessagingProvider = ({ children }) => {
       });
     });
 
+    newSocket.on('messages_delivered', (data) => {
+      const { conversationId, messageIds } = data;
+      if (activeConvRef.current?.id === conversationId) {
+        setMessages(prev => prev.map(msg =>
+          messageIds.includes(msg.id) ? { ...msg, is_delivered: 1 } : msg
+        ));
+      }
+    });
+
+    newSocket.on('messages_read', (data) => {
+      const { conversationId, messageIds } = data;
+      if (activeConvRef.current?.id === conversationId) {
+        setMessages(prev => prev.map(msg =>
+          messageIds.includes(msg.id) ? { ...msg, is_read: 1, is_delivered: 1 } : msg
+        ));
+      }
+    });
+
     newSocket.on('conversation_read', (data) => {
       setConversations(prev => prev.map(conv =>
         conv.id === data.conversationId
@@ -86,7 +124,9 @@ export const MessagingProvider = ({ children }) => {
     return () => {
       newSocket.close();
     };
-  }, [activeConversation]);
+  }, []);
+
+  useEffect(() => { activeConvRef.current = activeConversation; }, [activeConversation]);
 
   const authenticate = useCallback((token, eventId) => {
     if (socket) {
@@ -97,6 +137,7 @@ export const MessagingProvider = ({ children }) => {
 
   const loadConversations = useCallback(async (eventId) => {
     if (!eventId) return;
+    eventIdRef.current = eventId;
     try {
       const token = localStorage.getItem('harmony_token_current') || 
                     localStorage.getItem(`harmony_token_${eventId}`);
@@ -175,13 +216,20 @@ export const MessagingProvider = ({ children }) => {
 
   const markAsRead = useCallback(async (conversationId) => {
     try {
-      const token = localStorage.getItem('harmony_token_current');
+      const harmonyTokenKeys = Object.keys(localStorage).filter(key => key.startsWith('harmony_token_'));
+      const token = localStorage.getItem('harmony_token_current') ||
+                    (harmonyTokenKeys.length > 0 ? localStorage.getItem(harmonyTokenKeys[0]) : null);
+      if (!token) return;
+
+      if (socket) {
+        socket.emit('mark_conversation_read', { conversationId });
+      }
+
       await fetch(`/api/conversations/${conversationId}/read`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` }
       });
 
-      // Update local state
       setConversations(prev => prev.map(conv =>
         conv.id === conversationId ? { ...conv, unread_count: 0 } : conv
       ));
@@ -190,14 +238,34 @@ export const MessagingProvider = ({ children }) => {
     } catch (error) {
       console.error('Mark as read error:', error);
     }
-  }, [activeConversation]);
+  }, [activeConversation, socket]);
 
 
   const createConversation = useCallback(async (eventId, participant1Id, participant2Id) => {
-    // This will be handled by the sendMessage function when no conversation exists
-    // The backend will create the conversation automatically
-    console.log('Creating conversation between', participant1Id, 'and', participant2Id);
-  }, []);
+    try {
+      const token = localStorage.getItem('harmony_token_current') ||
+                    localStorage.getItem(`harmony_token_${eventId}`);
+      if (!token) return null;
+
+      const response = await fetch(`/api/events/${eventId}/conversations`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ participant1Id, participant2Id })
+      });
+      const data = await response.json();
+      if (data.conversation) {
+        await loadConversations(eventId);
+        return data.conversation;
+      }
+      return null;
+    } catch (error) {
+      console.error('Create conversation error:', error);
+      return null;
+    }
+  }, [loadConversations]);
 
   return (
     <MessagingContext.Provider value={{

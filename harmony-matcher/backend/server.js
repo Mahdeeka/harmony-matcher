@@ -19,6 +19,7 @@ const {
   sendMessage,
   getConversationsForUser,
   getMessages,
+  markMessagesAsDelivered,
   markMessagesAsRead,
   getUnreadCount
 } = require('./services/messaging');
@@ -87,33 +88,44 @@ const connectedUsers = new Map();
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
-  socket.on('authenticate', (data) => {
+  const authenticateSocket = (token) => {
     try {
-      const { token } = data;
       const decoded = verifyToken(token);
-
-      if (decoded) {
+      if (decoded && !socket.userId) {
         socket.userId = decoded.attendeeId;
         socket.eventId = decoded.eventId;
         connectedUsers.set(decoded.attendeeId, socket.id);
-
-        // Join user to their event room
         socket.join(`event_${decoded.eventId}`);
-
-        // Notify others that user is online
         socket.to(`event_${decoded.eventId}`).emit('user_online', decoded.attendeeId);
-
         console.log(`User ${decoded.attendeeId} authenticated for event ${decoded.eventId}`);
       }
     } catch (error) {
       console.error('Authentication error:', error);
     }
+  };
+
+  if (socket.handshake?.auth?.token) {
+    authenticateSocket(socket.handshake.auth.token);
+  }
+
+  socket.on('authenticate', (data) => {
+    if (data?.token) authenticateSocket(data.token);
   });
 
-  socket.on('join_conversation', (data) => {
+  socket.on('join_conversation', async (data) => {
     const { conversationId } = data;
     socket.join(`conversation_${conversationId}`);
     console.log(`User joined conversation: ${conversationId}`);
+
+    if (socket.userId) {
+      const deliveredIds = await markMessagesAsDelivered(conversationId, socket.userId);
+      if (deliveredIds.length > 0) {
+        socket.to(`conversation_${conversationId}`).emit('messages_delivered', {
+          conversationId,
+          messageIds: deliveredIds
+        });
+      }
+    }
   });
 
   socket.on('leave_conversation', (data) => {
@@ -130,12 +142,18 @@ io.on('connection', (socket) => {
         return;
       }
 
-      // Save message to database
       const message = await sendMessage(conversationId, socket.userId, content.trim(), messageType);
 
-      // Get sender info
       const db = getDb();
       const sender = db.prepare(`SELECT name, photo_url FROM attendees WHERE id = ?`).get(socket.userId);
+
+      const room = io.sockets.adapter.rooms.get(`conversation_${conversationId}`);
+      const recipientInRoom = room && room.size > 1;
+
+      if (recipientInRoom) {
+        db.prepare(`UPDATE messages SET is_delivered = 1 WHERE id = ?`).run(message.id);
+        message.is_delivered = 1;
+      }
 
       const messageData = {
         ...message,
@@ -143,7 +161,6 @@ io.on('connection', (socket) => {
         sender_photo: sender.photo_url
       };
 
-      // Broadcast to conversation participants
       io.to(`conversation_${conversationId}`).emit('new_message', {
         conversationId,
         message: messageData
@@ -177,9 +194,14 @@ io.on('connection', (socket) => {
       const { conversationId } = data;
       if (!socket.userId) return;
 
-      await markMessagesAsRead(conversationId, socket.userId);
+      const readIds = await markMessagesAsRead(conversationId, socket.userId);
 
-      // Notify conversation participants about read status
+      socket.to(`conversation_${conversationId}`).emit('messages_read', {
+        conversationId,
+        messageIds: readIds,
+        userId: socket.userId
+      });
+
       socket.to(`conversation_${conversationId}`).emit('conversation_read', {
         conversationId,
         userId: socket.userId
@@ -551,11 +573,24 @@ app.post('/api/events/:eventId/attendees', (req, res) => {
     const { eventId } = req.params;
     const a = req.body;
     const id = uuidv4();
-    db.prepare(`INSERT INTO attendees (id, event_id, name, phone, email, title, company, industry, professional_bio, personal_bio, skills, looking_for, offering, linkedin_url, photo_url, location, languages) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, eventId, a.name, a.phone, a.email, a.title, a.company, a.industry, a.professional_bio, a.personal_bio, a.skills, a.looking_for, a.offering, a.linkedin_url, a.photo_url, a.location, a.languages);
+    const n = (v) => v === undefined ? null : v;
+    db.prepare(`INSERT INTO attendees (id, event_id, name, phone, email, title, company, industry, professional_bio, personal_bio, skills, looking_for, offering, linkedin_url, photo_url, location, languages) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(id, eventId, a.name, a.phone, n(a.email), n(a.title), n(a.company), n(a.industry), n(a.professional_bio), n(a.personal_bio), n(a.skills), n(a.looking_for), n(a.offering), n(a.linkedin_url), n(a.photo_url), n(a.location), n(a.languages));
     res.json({ success: true, attendee: { id, ...a } });
   } catch (error) {
     console.error('Add attendee error:', error);
-    res.status(500).json({ error: 'فشل في إضافة المشارك' });
+    const detail = (error && error.message) ? error.message : String(error || '');
+    let reason = 'فشل في إضافة المشارك';
+    if (detail.includes('UNIQUE') && detail.includes('phone')) {
+      reason = 'رقم الهاتف مسجّل مسبقاً في هذه الفعالية';
+    } else if (detail.includes('UNIQUE') && detail.includes('email')) {
+      reason = 'البريد الإلكتروني مسجّل مسبقاً في هذه الفعالية';
+    } else if (detail.includes('UNIQUE')) {
+      reason = 'هذا المشارك مسجّل مسبقاً';
+    } else if (detail.includes('NOT NULL') || detail.includes('constraint')) {
+      reason = 'بيانات ناقصة — تأكد من تعبئة الاسم ورقم الهاتف';
+    }
+    res.status(400).json({ error: `${reason}: ${detail}` });
   }
 });
 
@@ -567,6 +602,32 @@ app.delete('/api/attendees/:id', (req, res) => {
   } catch (error) {
     console.error('Delete attendee error:', error);
     res.status(500).json({ error: 'فشل في حذف المشارك' });
+  }
+});
+
+app.put('/api/attendees/:id/bio', (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (!token) {
+      return res.status(401).json({ error: 'غير مصرح' });
+    }
+
+    const decoded = verifyToken(token);
+    if (decoded.attendeeId !== req.params.id) {
+      return res.status(403).json({ error: 'غير مصرح بتعديل هذا الملف' });
+    }
+
+    const { personal_bio } = req.body;
+    const bio = (personal_bio || '').slice(0, 500);
+
+    const db = getDb();
+    db.prepare('UPDATE attendees SET personal_bio = ? WHERE id = ?').run(bio, req.params.id);
+
+    const updated = db.prepare('SELECT * FROM attendees WHERE id = ?').get(req.params.id);
+    res.json({ success: true, attendee: updated });
+  } catch (error) {
+    console.error('Update bio error:', error);
+    res.status(500).json({ error: 'فشل في تحديث النبذة' });
   }
 });
 
@@ -590,6 +651,21 @@ app.get('/api/events/:eventId/conversations', async (req, res) => {
   } catch (error) {
     console.error('Get conversations error:', error);
     res.status(500).json({ error: 'فشل في جلب المحادثات' });
+  }
+});
+
+app.post('/api/events/:eventId/conversations', async (req, res) => {
+  try {
+    const { eventId } = req.params;
+    const { participant1Id, participant2Id } = req.body;
+    if (!participant1Id || !participant2Id) {
+      return res.status(400).json({ error: 'Missing participant IDs' });
+    }
+    const conversation = await createOrGetConversation(eventId, participant1Id, participant2Id);
+    res.json({ conversation });
+  } catch (error) {
+    console.error('Create conversation error:', error);
+    res.status(500).json({ error: 'Failed to create conversation' });
   }
 });
 

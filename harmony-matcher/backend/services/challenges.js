@@ -237,21 +237,20 @@ function getEventLeaderboard(eventId, limit = 20) {
 
   const leaderboard = db.prepare(`
     SELECT
-      ap.attendee_id,
-      ap.total_points,
-      ap.challenges_completed,
+      a.id AS attendee_id,
+      COALESCE(ap.total_points, 0) AS total_points,
+      COALESCE(ap.challenges_completed, 0) AS challenges_completed,
       a.name,
       a.photo_url,
       a.title,
       a.company
-    FROM attendee_points ap
-    JOIN attendees a ON ap.attendee_id = a.id
-    WHERE ap.event_id = ?
-    ORDER BY ap.total_points DESC, ap.challenges_completed DESC
+    FROM attendees a
+    LEFT JOIN attendee_points ap ON ap.attendee_id = a.id AND ap.event_id = ?
+    WHERE a.event_id = ?
+    ORDER BY total_points DESC, challenges_completed DESC, a.name ASC
     LIMIT ?
-  `).all(eventId, limit);
+  `).all(eventId, eventId, limit);
 
-  // Add rank
   return leaderboard.map((entry, index) => ({
     ...entry,
     rank: index + 1

@@ -63,8 +63,8 @@ const MessagingNav = ({ eventId, onConversationSelect, currentUser }) => {
             ) : (
               conversations.map((conversation) => {
                 const otherParticipantName = conversation.participant1_id === currentUser?.id
-                  ? conversation.participant1_name || 'مستخدم'
-                  : conversation.participant2_name || 'مستخدم';
+                  ? conversation.participant2_name || 'مستخدم'
+                  : conversation.participant1_name || 'مستخدم';
 
                 return (
                   <button

@@ -103,17 +103,34 @@ async function getMessages(conversationId, limit = 50, offset = 0) {
   return messages.reverse(); // Return in chronological order
 }
 
+async function markMessagesAsDelivered(conversationId, userId) {
+  const db = getDb();
+
+  const updated = db.prepare(`
+    UPDATE messages
+    SET is_delivered = 1
+    WHERE conversation_id = ? AND sender_id != ? AND is_delivered = 0
+  `).run(conversationId, userId);
+
+  if (updated.changes > 0) {
+    const delivered = db.prepare(`
+      SELECT id FROM messages
+      WHERE conversation_id = ? AND sender_id != ? AND is_delivered = 1 AND is_read = 0
+    `).all(conversationId, userId);
+    return delivered.map(m => m.id);
+  }
+  return [];
+}
+
 async function markMessagesAsRead(conversationId, userId) {
   const db = getDb();
 
-  // Mark messages as read
   db.prepare(`
     UPDATE messages
-    SET is_read = 1
+    SET is_read = 1, is_delivered = 1
     WHERE conversation_id = ? AND sender_id != ?
   `).run(conversationId, userId);
 
-  // Reset unread count for this user
   const conversation = db.prepare(`SELECT * FROM conversations WHERE id = ?`).get(conversationId);
   const unreadField = conversation.participant1_id === userId ? 'unread_count1' : 'unread_count2';
 
@@ -122,6 +139,12 @@ async function markMessagesAsRead(conversationId, userId) {
     SET ${unreadField} = 0
     WHERE id = ?
   `).run(conversationId);
+
+  const readIds = db.prepare(`
+    SELECT id FROM messages
+    WHERE conversation_id = ? AND sender_id != ? AND is_read = 1
+  `).all(conversationId, userId);
+  return readIds.map(m => m.id);
 }
 
 async function getUnreadCount(attendeeId, eventId) {
@@ -148,6 +171,7 @@ module.exports = {
   sendMessage,
   getConversationsForUser,
   getMessages,
+  markMessagesAsDelivered,
   markMessagesAsRead,
   getUnreadCount
 };
